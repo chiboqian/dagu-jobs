@@ -185,6 +185,7 @@ schedule: "${BACKUP_SCHEDULE}"
 labels:
   host: "${HOST_SHORT}"
   user: "${CURRENT_USER}"
+  type: "backup"
 worker_selector:
   host: "${HOST_SHORT}"
   user: "${CURRENT_USER}"
