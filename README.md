@@ -10,7 +10,7 @@ Bootstrap and migration scripts for running a [Dagu](https://github.com/daguclou
 | `./cron_to_dagu.sh` | Reads the current user's `crontab -l` (or a file), converts all cron jobs into Dagu YAML definitions under `~/jobs/dags/` with matching `worker_selector` labels, and validates them with `dagu validate`. |
 | `./import_dags.sh` | Authenticates against the Dagu server API using username/password and creates or updates all `.yaml` workflows from `~/jobs/dags/`. |
 | `./disable_cron.sh` | Backs up the user's crontab to `~/jobs/crontab.bak`, comments out all active cron entries with `# [Replaced by Dagu]`, and adds a migration header. |
-| `./restic/setup_restic.sh` | Downloads the `restic` binary into `~/restic/restic`, prompts for a master password and stores it in `~/restic/.env`, initializes the backup repo at `<RESTIC_SERVER>/<hostname>-<username>/`, and installs `~/restic/backup.sh`. |
+| `./restic/setup_restic.sh` | Downloads the `restic` binary into `~/restic/restic`, prompts for a master password and stores it in `~/restic/.env`, initializes the backup repo at `<RESTIC_SERVER>/<hostname>-<username>/`, and creates `~/restic/backup.sh` and `~/restic/restic_backup.yaml`. |
 | `./restic/backup.sh` | Loads `RESTIC_REPOSITORY` and `RESTIC_PASSWORD` from `~/restic/.env` and runs a `restic backup`. |
 
 *(Generated artifacts `bin/`, `run_worker.sh`, `dags/`, and `crontab.bak*` are git-ignored.)*
@@ -144,10 +144,13 @@ Comments out all active cron entries in the current user's `crontab`, prefixes t
 
 ### 1. `restic/setup_restic.sh`
 
-Downloads the latest `restic` binary into `~/restic/restic`, prompts for the master password, saves `RESTIC_REPOSITORY` and `RESTIC_PASSWORD` to `~/restic/.env` (`chmod 600`), initializes the target repository on the Restic REST server at `rest:http://<RESTIC_SERVER>/<hostname>-<username>/`, and installs `~/restic/backup.sh`.
+Downloads the latest `restic` binary into `~/restic/restic`, prompts for the master password, saves `RESTIC_REPOSITORY` and `RESTIC_PASSWORD` to `~/restic/.env` (`chmod 600`), initializes the target repository on the Restic REST server at `rest:http://<RESTIC_SERVER>/<hostname>-<username>/`, and creates `~/restic/backup.sh` along with a Dagu job definition at `~/restic/restic_backup.yaml` (also copied to `dags/restic_backup.yaml` if `dags/` exists).
 
 ```bash
 ./restic/setup_restic.sh <RESTIC_SERVER>
+
+# Import the generated restic backup job into Dagu:
+./import_dags.sh -d ~/restic
 ```
 
 **Example:**

@@ -6,10 +6,12 @@ RESTIC_DIR="${RESTIC_DIR:-$HOME/restic}"
 RESTIC_BIN="${RESTIC_DIR}/restic"
 ENV_FILE="${RESTIC_DIR}/.env"
 BACKUP_SCRIPT="${RESTIC_DIR}/backup.sh"
+DAG_FILE="${RESTIC_DIR}/restic_backup.yaml"
 
 RESTIC_SERVER="${RESTIC_SERVER:-}"
 RESTIC_PASSWORD="${RESTIC_PASSWORD:-}"
 BACKUP_PATHS="${BACKUP_PATHS:-$HOME}"
+BACKUP_SCHEDULE="${BACKUP_SCHEDULE:-0 3 * * *}"
 
 usage() {
   cat <<EOF
@@ -17,12 +19,13 @@ Usage: $0 [options] <RESTIC_SERVER>
 
 Download the restic binary into ~/restic, save the master password in ~/restic/.env,
 initialize the backup repository at the REST server under <hostname>-<username>,
-and create ~/restic/backup.sh.
+and create ~/restic/backup.sh and ~/restic/restic_backup.yaml (Dagu job).
 
 Options:
   -s, --server URL        Restic REST server URL or host:port (e.g. http://backup.example.com:8000)
   -p, --password PASS     Restic master password (prompted interactively if omitted)
   -b, --backup-paths DIR  Space-separated default paths to back up (default: \$HOME)
+  -c, --schedule CRON     Cron schedule for the Dagu backup job (default: "0 3 * * *")
   -h, --help              Show this help message
 
 Examples:
@@ -44,6 +47,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     -b|--backup-paths)
       BACKUP_PATHS="$2"
+      shift 2
+      ;;
+    -c|--schedule)
+      BACKUP_SCHEDULE="$2"
       shift 2
       ;;
     -h|--help)
@@ -106,7 +113,7 @@ TAG="${TAG:-v0.19.1}"
 VERSION="${TAG#v}"
 DOWNLOAD_URL="https://github.com/restic/restic/releases/download/${TAG}/restic_${VERSION}_${OS}_${ARCH}.bz2"
 
-echo "[1/4] Downloading restic ${TAG} (${OS}/${ARCH}) to ${RESTIC_BIN}..."
+echo "[1/5] Downloading restic ${TAG} (${OS}/${ARCH}) to ${RESTIC_BIN}..."
 python3 - "$DOWNLOAD_URL" "$RESTIC_BIN" <<'PYEOF'
 import bz2
 import os
@@ -136,7 +143,7 @@ if [[ -z "$RESTIC_PASSWORD" ]]; then
   fi
 fi
 
-echo "[2/4] Saving configuration and password to ${ENV_FILE}..."
+echo "[2/5] Saving configuration and password to ${ENV_FILE}..."
 umask 077
 python3 - "$ENV_FILE" "$RESTIC_REPOSITORY" "$RESTIC_PASSWORD" "$RESTIC_BIN" "$BACKUP_PATHS" <<'PYEOF'
 import os
@@ -156,14 +163,41 @@ os.chmod(env_file, 0o600)
 PYEOF
 
 # 3. Create ~/restic/backup.sh
-echo "[3/4] Creating backup runner script at ${BACKUP_SCRIPT}..."
+echo "[3/5] Creating backup runner script at ${BACKUP_SCRIPT}..."
 if [[ "$(realpath "$SCRIPT_DIR/backup.sh")" != "$(realpath -m "$BACKUP_SCRIPT")" ]]; then
   cp "$SCRIPT_DIR/backup.sh" "$BACKUP_SCRIPT"
 fi
 chmod +x "$BACKUP_SCRIPT"
 
-# 4. Initialize backup target at the REST server
-echo "[4/4] Initializing restic repository at ${RESTIC_REPOSITORY}..."
+# 4. Create Dagu job definition at ~/restic/restic_backup.yaml
+HOST_SHORT="$(hostname -s)"
+CURRENT_USER="$(whoami)"
+echo "[4/5] Creating Dagu backup job at ${DAG_FILE}..."
+cat > "$DAG_FILE" <<EOF
+# Restic backup job (${TARGET_NAME})
+description: "Restic backup for ${TARGET_NAME} to ${SERVER_CLEAN}/${TARGET_NAME}/"
+schedule: "${BACKUP_SCHEDULE}"
+labels:
+  host: "${HOST_SHORT}"
+  user: "${CURRENT_USER}"
+worker_selector:
+  host: "${HOST_SHORT}"
+  user: "${CURRENT_USER}"
+shell: "/bin/bash"
+working_dir: "${RESTIC_DIR}"
+steps:
+  - name: restic_backup
+    run: "${BACKUP_SCRIPT}"
+EOF
+
+# Also copy into the repo's dags/ folder if present so ./import_dags.sh picks it up automatically
+REPO_DAGS_DIR="$(cd "$SCRIPT_DIR/.." && pwd)/dags"
+if [[ -d "$REPO_DAGS_DIR" ]]; then
+  cp "$DAG_FILE" "${REPO_DAGS_DIR}/restic_backup.yaml"
+fi
+
+# 5. Initialize backup target at the REST server
+echo "[5/5] Initializing restic repository at ${RESTIC_REPOSITORY}..."
 export RESTIC_REPOSITORY RESTIC_PASSWORD
 if "$RESTIC_BIN" cat config >/dev/null 2>&1; then
   echo "Repository already initialized at ${RESTIC_REPOSITORY}."
@@ -177,3 +211,7 @@ echo "  Binary:      ${RESTIC_BIN}"
 echo "  Env File:    ${ENV_FILE} (mode 600)"
 echo "  Repository:  ${RESTIC_REPOSITORY}"
 echo "  Run Backup:  ${BACKUP_SCRIPT}"
+echo "  Dagu Job:    ${DAG_FILE}"
+echo ""
+echo "To import the backup job into Dagu, run:"
+echo "  $(cd "$SCRIPT_DIR/.." && pwd)/import_dags.sh -d ${RESTIC_DIR}"
