@@ -65,6 +65,7 @@ cd "\$SCRIPT_DIR"
 COORDINATOR_ADDR="\${COORDINATOR_ADDR:-${COORDINATOR_ADDR}}"
 WORKER_ID="\${WORKER_ID:-\$(hostname -s)-\$(whoami)}"
 WORKER_LABELS="\${WORKER_LABELS:-host=\$(hostname -s),user=\$(whoami)}"
+WORKER_HEALTH_PORT="\${WORKER_HEALTH_PORT:-0}"
 DAGU_BIN="\${DAGU_BIN:-${DAGU_BIN}}"
 
 echo "Starting Dagu worker '\${WORKER_ID}' (labels: \${WORKER_LABELS}) connecting to \${COORDINATOR_ADDR}..."
@@ -73,6 +74,7 @@ export DAGU_AUTH_MODE="\${DAGU_AUTH_MODE:-none}"
 exec "\$DAGU_BIN" worker \\
   --worker.id="\${WORKER_ID}" \\
   --worker.labels="\${WORKER_LABELS}" \\
+  --worker.health-port="\${WORKER_HEALTH_PORT}" \\
   --worker.coordinators="\${COORDINATOR_ADDR}" \\
   "\$@"
 EOF
