@@ -9,8 +9,9 @@ Bootstrap and migration scripts for running a [Dagu](https://github.com/daguclou
 | `./setup_worker.sh` | Downloads the latest `dagu` binary to `~/jobs/bin/dagu`, creates `~/jobs/run_worker.sh` with `worker.id=<hostname>-<user>` and `worker.labels=host=<hostname>,user=<user>`, and enables/starts a user-level `systemd` service (`dagu-worker.service`). |
 | `./cron_to_dagu.sh` | Reads the current user's `crontab -l` (or a file), converts all cron jobs into Dagu YAML definitions under `~/jobs/dags/` with matching `worker_selector` labels, and validates them with `dagu validate`. |
 | `./import_dags.sh` | Authenticates against the Dagu server API using username/password and creates or updates all `.yaml` workflows from `~/jobs/dags/`. |
+| `./disable_cron.sh` | Backs up the user's crontab to `~/jobs/crontab.bak`, comments out all active cron entries with `# [Replaced by Dagu]`, and adds a migration header. |
 
-*(Generated artifacts `bin/`, `run_worker.sh`, and `dags/` are git-ignored.)*
+*(Generated artifacts `bin/`, `run_worker.sh`, `dags/`, and `crontab.bak*` are git-ignored.)*
 
 ---
 
@@ -28,6 +29,9 @@ cd ~/jobs
 
 # 3. Import generated DAGs into the Dagu server
 ./import_dags.sh
+
+# 4. Comment out old crontab entries after verifying Dagu jobs
+./disable_cron.sh
 ```
 
 ---
@@ -104,3 +108,20 @@ Logs into the Dagu server REST API (`/api/v1/auth/login`) with a Dagu username a
 - `DAGU_USER`: Dagu username
 - `DAGU_PASSWORD`: Dagu password
 - `DAGS_DIR`: Directory containing `.yaml` files (default: `~/jobs/dags`)
+
+---
+
+### 4. `disable_cron.sh`
+
+Comments out all active cron entries in the current user's `crontab`, prefixes them with `# [Replaced by Dagu]`, and saves a backup of the previous crontab to `~/jobs/crontab.bak`.
+
+```bash
+# Preview changes without modifying crontab
+./disable_cron.sh --dry-run
+
+# Comment out active cron entries and save backup to ~/jobs/crontab.bak
+./disable_cron.sh
+
+# Restore the original crontab from ~/jobs/crontab.bak if needed
+./disable_cron.sh --restore
+```
