@@ -17,7 +17,7 @@ DAG_FILE="${RESTIC_DIR}/${DAG_NAME}.yaml"
 RESTIC_SERVER="${RESTIC_SERVER:-}"
 RESTIC_PASSWORD="${RESTIC_PASSWORD:-}"
 BACKUP_PATHS="${BACKUP_PATHS:-$HOME}"
-BACKUP_SCHEDULE="${BACKUP_SCHEDULE:-0 3 * * *}"
+BACKUP_SCHEDULE="${BACKUP_SCHEDULE:-}"
 
 usage() {
   cat <<EOF
@@ -25,13 +25,13 @@ Usage: $0 [options] <RESTIC_SERVER>
 
 Download the restic binary into ~/restic, save the master password in ~/restic/.env,
 initialize the backup repository at the REST server under <hostname>-<username>,
-and create ~/restic/backup.sh and ~/restic/restic_backup.yaml (Dagu job).
+and create ~/restic/backup.sh and ~/restic/<hostname>_<username>_restic_backup.yaml.
 
 Options:
   -s, --server URL        Restic REST server URL or host:port (e.g. http://backup.example.com:8000)
   -p, --password PASS     Restic master password (prompted interactively if omitted)
   -b, --backup-paths DIR  Space-separated default paths to back up (default: \$HOME)
-  -c, --schedule CRON     Cron schedule for the Dagu backup job (default: "0 3 * * *")
+  -c, --schedule CRON     Cron schedule for the Dagu backup job (default: randomized between 11 PM and 5 AM)
   -h, --help              Show this help message
 
 Examples:
@@ -184,6 +184,12 @@ fi
 chmod +x "$BACKUP_SCRIPT"
 
 # 4. Create Dagu job definition at ~/restic/<hostname>_<username>_restic_backup.yaml
+if [[ -z "$BACKUP_SCHEDULE" ]]; then
+  HOURS=(23 0 1 2 3 4)
+  RAND_HOUR="${HOURS[$((RANDOM % ${#HOURS[@]}))]}"
+  RAND_MIN="$((RANDOM % 60))"
+  BACKUP_SCHEDULE="${RAND_MIN} ${RAND_HOUR} * * *"
+fi
 rm -f "${RESTIC_DIR}/restic_backup.yaml"
 echo "[4/5] Creating Dagu backup job at ${DAG_FILE}..."
 cat > "$DAG_FILE" <<EOF
@@ -226,7 +232,7 @@ echo "  Binary:      ${RESTIC_BIN}"
 echo "  Env File:    ${ENV_FILE} (mode 600)"
 echo "  Repository:  ${RESTIC_REPOSITORY}"
 echo "  Run Backup:  ${BACKUP_SCRIPT}"
-echo "  Dagu Job:    ${DAG_FILE}"
+echo "  Dagu Job:    ${DAG_FILE} (schedule: ${BACKUP_SCHEDULE})"
 echo ""
 echo "To import the backup job into Dagu, run:"
 echo "  $(cd "$SCRIPT_DIR/.." && pwd)/import_dags.sh -d ${RESTIC_DIR}"

@@ -144,7 +144,7 @@ Comments out all active cron entries in the current user's `crontab`, prefixes t
 
 ### 1. `restic/setup_restic.sh`
 
-Downloads the latest `restic` binary into `~/restic/restic`, prompts for the master password, saves `RESTIC_REPOSITORY` and `RESTIC_PASSWORD` to `~/restic/.env` (`chmod 600`), initializes the target repository on the Restic REST server at `rest:http://<RESTIC_SERVER>/<hostname>-<username>/`, and creates `~/restic/backup.sh` along with a uniquely named Dagu job definition at `~/restic/<hostname>_<username>_restic_backup.yaml` (also copied into `dags/` if `dags/` exists).
+Downloads the latest `restic` binary into `~/restic/restic`, prompts for the master password (or reuses the existing one in `~/restic/.env`), saves `RESTIC_REPOSITORY` and `RESTIC_PASSWORD` to `~/restic/.env` (`chmod 600`), initializes the target repository on the Restic REST server at `rest:http://<RESTIC_SERVER>/<hostname>-<username>/`, and creates `~/restic/backup.sh` along with a uniquely named Dagu job definition at `~/restic/<hostname>_<username>_restic_backup.yaml` with a randomized nightly schedule between 11:00 PM and 5:00 AM.
 
 ```bash
 ./restic/setup_restic.sh <RESTIC_SERVER>
