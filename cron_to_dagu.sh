@@ -290,7 +290,7 @@ if [[ -x "$DAGU_BIN" ]]; then
   touch "$TMP_DAGU_HOME/dags/.examples-created"
   shopt -s nullglob
   for dag_file in "$OUTPUT_DIR"/*.yaml; do
-    "$DAGU_BIN" validate --dagu-home "$TMP_DAGU_HOME" "$dag_file" >/dev/null
+    DAGU_AUTH_MODE=none "$DAGU_BIN" validate --dagu-home "$TMP_DAGU_HOME" "$dag_file" >/dev/null
   done
   echo "All generated DAGs passed validation."
 fi

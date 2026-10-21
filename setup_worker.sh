@@ -69,6 +69,7 @@ DAGU_BIN="\${DAGU_BIN:-${DAGU_BIN}}"
 
 echo "Starting Dagu worker '\${WORKER_ID}' (labels: \${WORKER_LABELS}) connecting to \${COORDINATOR_ADDR}..."
 
+export DAGU_AUTH_MODE="\${DAGU_AUTH_MODE:-none}"
 exec "\$DAGU_BIN" worker \\
   --worker.id="\${WORKER_ID}" \\
   --worker.labels="\${WORKER_LABELS}" \\
