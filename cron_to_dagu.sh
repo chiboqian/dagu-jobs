@@ -249,6 +249,9 @@ for command, info in jobs_by_cmd.items():
             yaml_lines.append(f"  - {yaml_quote(sched)}")
 
     yaml_lines.extend([
+        "labels:",
+        f"  host: {yaml_quote(host_short)}",
+        f"  user: {yaml_quote(current_user)}",
         "worker_selector:",
         f"  host: {yaml_quote(host_short)}",
         f"  user: {yaml_quote(current_user)}",

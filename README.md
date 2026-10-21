@@ -74,8 +74,11 @@ Converts the current user's `crontab` into validated Dagu YAML definitions in `~
 - Preserves preceding `#` comments as the DAG `description`.
 - Merges identical commands that run on multiple cron schedules into a single DAG with a multi-schedule list.
 - Extracts leading `cd /path && ...` into Dagu's `working_dir` field.
-- Pins each generated DAG to the current host and user via `worker_selector`:
+- Labels and pins each generated DAG to the current host and user via `labels` and `worker_selector`:
   ```yaml
+  labels:
+    host: "<hostname>"
+    user: "<username>"
   worker_selector:
     host: "<hostname>"
     user: "<username>"
