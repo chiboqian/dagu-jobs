@@ -10,6 +10,8 @@ Bootstrap and migration scripts for running a [Dagu](https://github.com/daguclou
 | `./cron_to_dagu.sh` | Reads the current user's `crontab -l` (or a file), converts all cron jobs into Dagu YAML definitions under `~/jobs/dags/` with matching `worker_selector` labels, and validates them with `dagu validate`. |
 | `./import_dags.sh` | Authenticates against the Dagu server API using username/password and creates or updates all `.yaml` workflows from `~/jobs/dags/`. |
 | `./disable_cron.sh` | Backs up the user's crontab to `~/jobs/crontab.bak`, comments out all active cron entries with `# [Replaced by Dagu]`, and adds a migration header. |
+| `./restic/setup_restic.sh` | Downloads the `restic` binary into `~/restic/restic`, prompts for a master password and stores it in `~/restic/.env`, initializes the backup repo at `<RESTIC_SERVER>/<hostname>-<username>/`, and installs `~/restic/backup.sh`. |
+| `./restic/backup.sh` | Loads `RESTIC_REPOSITORY` and `RESTIC_PASSWORD` from `~/restic/.env` and runs a `restic backup`. |
 
 *(Generated artifacts `bin/`, `run_worker.sh`, `dags/`, and `crontab.bak*` are git-ignored.)*
 
@@ -134,4 +136,33 @@ Comments out all active cron entries in the current user's `crontab`, prefixes t
 
 # Restore the original crontab from ~/jobs/crontab.bak if needed
 ./disable_cron.sh --restore
+```
+
+---
+
+## Restic Backup Client (`./restic/`)
+
+### 1. `restic/setup_restic.sh`
+
+Downloads the latest `restic` binary into `~/restic/restic`, prompts for the master password, saves `RESTIC_REPOSITORY` and `RESTIC_PASSWORD` to `~/restic/.env` (`chmod 600`), initializes the target repository on the Restic REST server at `rest:http://<RESTIC_SERVER>/<hostname>-<username>/`, and installs `~/restic/backup.sh`.
+
+```bash
+./restic/setup_restic.sh <RESTIC_SERVER>
+```
+
+**Example:**
+```bash
+./restic/setup_restic.sh http://backup.luna-strategy.com:8000
+```
+
+### 2. `restic/backup.sh` (installed to `~/restic/backup.sh`)
+
+Reads `RESTIC_REPOSITORY`, `RESTIC_PASSWORD`, and `BACKUP_PATHS` from `~/restic/.env` and runs a backup tagged with `<hostname>-<username>`.
+
+```bash
+# Back up default BACKUP_PATHS ($HOME, excluding ~/.cache)
+~/restic/backup.sh
+
+# Or back up specific directories/files
+~/restic/backup.sh ~/jobs ~/luna-strategy-Trading
 ```
