@@ -157,7 +157,9 @@ PYEOF
 
 # 3. Create ~/restic/backup.sh
 echo "[3/4] Creating backup runner script at ${BACKUP_SCRIPT}..."
-cp "$SCRIPT_DIR/backup.sh" "$BACKUP_SCRIPT"
+if [[ "$(realpath "$SCRIPT_DIR/backup.sh")" != "$(realpath -m "$BACKUP_SCRIPT")" ]]; then
+  cp "$SCRIPT_DIR/backup.sh" "$BACKUP_SCRIPT"
+fi
 chmod +x "$BACKUP_SCRIPT"
 
 # 4. Initialize backup target at the REST server
