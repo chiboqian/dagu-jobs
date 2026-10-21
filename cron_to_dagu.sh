@@ -81,6 +81,9 @@ CRON_5_RE = re.compile(r"^(\S+\s+\S+\s+\S+\s+\S+\s+\S+)\s+(.+)$")
 CRON_SPECIAL_RE = re.compile(r"^(@\S+)\s+(.+)$")
 
 
+MAX_NAME_LEN = 38  # Dagu requires DAG names to be < 40 characters
+
+
 def derive_name(cmd: str) -> str:
     # Strip redirections at the end
     cleaned = re.sub(r"\s*(?:>>|>|2>&1|2>>|2>|<)\s*\S+", " ", cmd).strip()
@@ -106,13 +109,24 @@ def derive_name(cmd: str) -> str:
         else:
             break
 
-    if idx >= len(tokens):
-        tokens_rem = tokens
-    else:
-        tokens_rem = tokens[idx:]
-
+    tokens_rem = tokens[idx:] if idx < len(tokens) else tokens
     if not tokens_rem:
         return "cron_job"
+
+    # Unwrap generic cron wrapper scripts like run_cron_job.sh [--no-email] <actual_script> ...
+    first_base = os.path.splitext(os.path.basename(tokens_rem[0]))[0].lower()
+    if first_base in {"run_cron_job", "cron_wrapper", "wrapper"} and len(tokens_rem) > 1:
+        j = 1
+        while j < len(tokens_rem) and tokens_rem[j].startswith("-"):
+            j += 1
+        while j < len(tokens_rem):
+            b = os.path.basename(tokens_rem[j])
+            if b in interpreters or b.startswith("python3."):
+                j += 1
+            else:
+                break
+        if j < len(tokens_rem):
+            tokens_rem = tokens_rem[j:]
 
     script_path = tokens_rem[0]
     script_base = os.path.splitext(os.path.basename(script_path))[0]
@@ -131,24 +145,29 @@ def derive_name(cmd: str) -> str:
         if skip_next:
             skip_next = False
             continue
-        if arg in {"--wait-until", "--email"}:
+        if arg in {"--wait-until", "--email", "--no-email"}:
             if arg == "--wait-until":
                 skip_next = True
             continue
-        if arg in {"--config", "-c"} and i + 1 < len(args):
+        if arg in {"--config", "-c", "--instance", "--r2-object"} and i + 1 < len(args):
             cfg_base = os.path.splitext(os.path.basename(args[i + 1]))[0]
             name_parts.append(cfg_base)
             skip_next = True
             continue
         if arg.startswith("--"):
             flag_name = arg.lstrip("-").split("=")[0]
-            name_parts.append(flag_name)
+            if flag_name in {"report"}:
+                name_parts.append(flag_name)
         elif not arg.startswith("-"):
-            name_parts.append(os.path.splitext(os.path.basename(arg))[0])
+            val_base = os.path.splitext(os.path.basename(arg))[0]
+            if not val_base.startswith(".") and val_base.lower() not in {"env", "none", "active"}:
+                name_parts.append(val_base)
 
     slug = "_".join(name_parts)
     slug = re.sub(r"[^A-Za-z0-9_]+", "_", slug)
     slug = re.sub(r"_+", "_", slug).strip("_").lower()
+    if len(slug) > MAX_NAME_LEN:
+        slug = slug[:MAX_NAME_LEN].rstrip("_")
     return slug or "cron_job"
 
 
@@ -230,12 +249,22 @@ for raw in raw_lines:
 used_names = set()
 generated_files = []
 
+# Remove stale .yaml files in output_dir before writing new ones
+for existing in os.listdir(output_dir):
+    if existing.endswith(".yaml"):
+        try:
+            os.remove(os.path.join(output_dir, existing))
+        except OSError:
+            pass
+
 for command, info in jobs_by_cmd.items():
     base_name = derive_name(command)
-    dag_name = base_name
+    dag_name = base_name[:39].rstrip("_")
     counter = 2
     while dag_name in used_names:
-        dag_name = f"{base_name}_{counter}"
+        suffix = f"_{counter}"
+        trimmed = base_name[: 39 - len(suffix)].rstrip("_")
+        dag_name = f"{trimmed}{suffix}"
         counter += 1
     used_names.add(dag_name)
 
