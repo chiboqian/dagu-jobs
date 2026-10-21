@@ -174,9 +174,16 @@ for raw in raw_lines:
     if not line:
         pending_comments = []
         continue
-    if line.startswith("#"):
+    # Support re-running after disable_cron.sh has prefixed lines with '# [Replaced by Dagu]'
+    if line.startswith("# [Replaced by Dagu]"):
+        line = line[len("# [Replaced by Dagu]"):].strip()
+    elif line.startswith("#"):
         comment_text = line.lstrip("#").strip()
-        if comment_text:
+        if (
+            comment_text
+            and not comment_text.startswith("=== MIGRATED TO DAGU ===")
+            and not comment_text.startswith("Disabled on ")
+        ):
             pending_comments.append(comment_text)
         continue
 
