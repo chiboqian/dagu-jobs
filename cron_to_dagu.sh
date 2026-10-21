@@ -257,8 +257,16 @@ for existing in os.listdir(output_dir):
         except OSError:
             pass
 
+host_user_prefix = re.sub(r"[^A-Za-z0-9_]+", "_", f"{host_short}_{current_user}")
+host_user_prefix = re.sub(r"_+", "_", host_user_prefix).strip("_").lower()
+
 for command, info in jobs_by_cmd.items():
-    base_name = derive_name(command)
+    short_job = derive_name(command)
+    # Strip redundant prefix if short_job already starts with host or user name
+    for pfx in (f"{host_user_prefix}_", f"{current_user.lower()}_"):
+        if short_job.startswith(pfx) and len(short_job) > len(pfx):
+            short_job = short_job[len(pfx):]
+    base_name = f"{host_user_prefix}_{short_job}"
     dag_name = base_name[:39].rstrip("_")
     counter = 2
     while dag_name in used_names:

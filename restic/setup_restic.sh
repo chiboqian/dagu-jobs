@@ -6,7 +6,13 @@ RESTIC_DIR="${RESTIC_DIR:-$HOME/restic}"
 RESTIC_BIN="${RESTIC_DIR}/restic"
 ENV_FILE="${RESTIC_DIR}/.env"
 BACKUP_SCRIPT="${RESTIC_DIR}/backup.sh"
-DAG_FILE="${RESTIC_DIR}/restic_backup.yaml"
+HOST_SHORT="$(hostname -s)"
+CURRENT_USER="$(whoami)"
+SAFE_PREFIX="$(echo "${HOST_SHORT}_${CURRENT_USER}" | tr -cs 'A-Za-z0-9_' '_' | sed -E 's/^_+|_+$//g' | tr '[:upper:]' '[:lower:]')"
+DAG_NAME="${SAFE_PREFIX}_restic_backup"
+DAG_NAME="${DAG_NAME:0:39}"
+DAG_NAME="${DAG_NAME%_}"
+DAG_FILE="${RESTIC_DIR}/${DAG_NAME}.yaml"
 
 RESTIC_SERVER="${RESTIC_SERVER:-}"
 RESTIC_PASSWORD="${RESTIC_PASSWORD:-}"
@@ -169,9 +175,8 @@ if [[ "$(realpath "$SCRIPT_DIR/backup.sh")" != "$(realpath -m "$BACKUP_SCRIPT")"
 fi
 chmod +x "$BACKUP_SCRIPT"
 
-# 4. Create Dagu job definition at ~/restic/restic_backup.yaml
-HOST_SHORT="$(hostname -s)"
-CURRENT_USER="$(whoami)"
+# 4. Create Dagu job definition at ~/restic/<hostname>_<username>_restic_backup.yaml
+rm -f "${RESTIC_DIR}/restic_backup.yaml"
 echo "[4/5] Creating Dagu backup job at ${DAG_FILE}..."
 cat > "$DAG_FILE" <<EOF
 # Restic backup job (${TARGET_NAME})
@@ -186,14 +191,15 @@ worker_selector:
 shell: "/bin/bash"
 working_dir: "${RESTIC_DIR}"
 steps:
-  - name: restic_backup
+  - name: ${DAG_NAME}
     run: "${BACKUP_SCRIPT}"
 EOF
 
 # Also copy into the repo's dags/ folder if present so ./import_dags.sh picks it up automatically
 REPO_DAGS_DIR="$(cd "$SCRIPT_DIR/.." && pwd)/dags"
 if [[ -d "$REPO_DAGS_DIR" ]]; then
-  cp "$DAG_FILE" "${REPO_DAGS_DIR}/restic_backup.yaml"
+  rm -f "${REPO_DAGS_DIR}/restic_backup.yaml"
+  cp "$DAG_FILE" "${REPO_DAGS_DIR}/${DAG_NAME}.yaml"
 fi
 
 # 5. Initialize backup target at the REST server
