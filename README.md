@@ -34,6 +34,8 @@ cd ~/jobs
 ./disable_cron.sh
 ```
 
+> **Note:** You do **not** need to run `./run_worker.sh` manually after `./setup_worker.sh`—`setup_worker.sh` automatically enables and starts the background `dagu-worker` user `systemd` service.
+
 ---
 
 ## Script Reference
@@ -94,6 +96,8 @@ Converts the current user's `crontab` into validated Dagu YAML definitions in `~
 
 Logs into the Dagu server REST API (`/api/v1/auth/login`) with a Dagu username and password, then creates or updates all `.yaml` DAG definitions in `~/jobs/dags/`.
 
+- **Idempotent:** Safe to run multiple times—existing DAGs with the same name are updated in place (`PUT /api/v1/dags/{name}/spec`) rather than duplicated.
+
 ```bash
 # Interactive prompt for username and password
 ./import_dags.sh
@@ -114,6 +118,8 @@ Logs into the Dagu server REST API (`/api/v1/auth/login`) with a Dagu username a
 ### 4. `disable_cron.sh`
 
 Comments out all active cron entries in the current user's `crontab`, prefixes them with `# [Replaced by Dagu]`, and saves a backup of the previous crontab to `~/jobs/crontab.bak`.
+
+- **Idempotent:** Safe to run multiple times—if all cron entries are already commented out, no changes are made.
 
 ```bash
 # Preview changes without modifying crontab
