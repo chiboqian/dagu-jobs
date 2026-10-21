@@ -139,7 +139,15 @@ PYEOF
 
 echo "Installed: $("$RESTIC_BIN" version)"
 
-# 2. Prompt for master password if not provided and write ~/restic/.env
+# 2. Load existing password from ~/restic/.env if present, otherwise prompt
+if [[ -z "$RESTIC_PASSWORD" && -f "$ENV_FILE" ]]; then
+  # shellcheck disable=SC1090
+  RESTIC_PASSWORD="$(source "$ENV_FILE" 2>/dev/null && printf '%s' "${RESTIC_PASSWORD:-}" || true)"
+  if [[ -n "$RESTIC_PASSWORD" ]]; then
+    echo "Using existing master password from ${ENV_FILE}."
+  fi
+fi
+
 if [[ -z "$RESTIC_PASSWORD" ]]; then
   read -r -s -p "Enter Restic Master Password: " RESTIC_PASSWORD
   echo ""
