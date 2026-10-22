@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DAGS_DIR="${DAGS_DIR:-${SCRIPT_DIR}/dags}"
+DAG_FILE="${DAG_FILE:-}"
 DAGU_SERVER="${DAGU_SERVER:-http://jobs.luna-strategy.com:8080}"
 DAGU_USER="${DAGU_USER:-}"
 DAGU_PASSWORD="${DAGU_PASSWORD:-}"
@@ -12,13 +13,15 @@ usage() {
 Usage: $0 [options] [USERNAME] [PASSWORD]
 
 Authenticate against the Dagu server with username/password and import all
-DAG YAML files from DAGS_DIR (creates new DAGs or updates existing ones).
+DAG YAML files from DAGS_DIR (or a single file with -f), creating new DAGs or
+updating existing ones.
 
 Options:
   -u, --user USER         Dagu username (or set DAGU_USER)
   -p, --password PASS     Dagu password (or set DAGU_PASSWORD)
   -s, --server URL        Dagu server URL (default: ${DAGU_SERVER})
   -d, --dags-dir DIR      Directory containing .yaml files (default: ${DAGS_DIR})
+  -f, --file FILE         Import only a specific .yaml file
   -h, --help              Show this help message
 
 Examples:
@@ -45,6 +48,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     -d|--dags-dir)
       DAGS_DIR="$2"
+      shift 2
+      ;;
+    -f|--file)
+      DAG_FILE="$2"
       shift 2
       ;;
     -h|--help)
@@ -78,7 +85,7 @@ if [[ -z "$DAGU_PASSWORD" ]]; then
   echo ""
 fi
 
-export DAGU_SERVER DAGU_USER DAGU_PASSWORD DAGS_DIR
+export DAGU_SERVER DAGU_USER DAGU_PASSWORD DAGS_DIR DAG_FILE
 
 python3 - <<'PYEOF'
 import glob
@@ -98,6 +105,7 @@ else:
 username = os.environ["DAGU_USER"]
 password = os.environ["DAGU_PASSWORD"]
 dags_dir = os.environ["DAGS_DIR"]
+dag_file = os.environ.get("DAG_FILE", "").strip()
 
 
 def api_request(method: str, path: str, payload=None, token=None):
@@ -124,10 +132,18 @@ def api_request(method: str, path: str, payload=None, token=None):
         return e.code, err_body
 
 
-yaml_files = sorted(glob.glob(os.path.join(dags_dir, "*.yaml")))
-if not yaml_files:
-    print(f"No .yaml files found in {dags_dir}", file=sys.stderr)
-    sys.exit(1)
+if dag_file:
+    if not os.path.isfile(dag_file):
+        print(f"DAG file not found: {dag_file}", file=sys.stderr)
+        sys.exit(1)
+    yaml_files = [dag_file]
+    source_desc = dag_file
+else:
+    yaml_files = sorted(glob.glob(os.path.join(dags_dir, "*.yaml")))
+    if not yaml_files:
+        print(f"No .yaml files found in {dags_dir}", file=sys.stderr)
+        sys.exit(1)
+    source_desc = dags_dir
 
 print(f"Authenticating as '{username}' against {api_url}...")
 status, body = api_request("POST", "/auth/login", {"username": username, "password": password})
@@ -137,7 +153,7 @@ if status != 200 or "token" not in body:
     sys.exit(1)
 
 token = body["token"]
-print(f"Authenticated successfully. Importing {len(yaml_files)} DAG(s) from {dags_dir}...\n")
+print(f"Authenticated successfully. Importing {len(yaml_files)} DAG(s) from {source_desc}...\n")
 
 created = 0
 updated = 0
