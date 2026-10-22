@@ -59,6 +59,7 @@ Downloads the `dagu` binary for the current OS/architecture into `~/jobs/bin/dag
 - `--worker.id`: `$(hostname -s)-$(whoami)` (e.g., `llm-01-backtest01`)
 - `--worker.labels`: `host=$(hostname -s),user=$(whoami)` (e.g., `host=llm-01,user=backtest01`)
 - `--worker.health-port`: `0` (disabled by default so multiple users on the same host can each run a worker without conflicting on port `8092`)
+- `TMPDIR`: `/tmp/dagu-$(whoami)` (isolated per user so multiple workers on the same host do not conflict on `/tmp/dagu` permissions)
 
 **Managing the Systemd User Service:**
 ```bash

@@ -70,6 +70,11 @@ DAGU_BIN="\${DAGU_BIN:-${DAGU_BIN}}"
 
 echo "Starting Dagu worker '\${WORKER_ID}' (labels: \${WORKER_LABELS}) connecting to \${COORDINATOR_ADDR}..."
 
+# Isolate TMPDIR per user so multiple workers on the same host don't collide on /tmp/dagu (0750)
+export TMPDIR="\${TMPDIR:-/tmp/dagu-\$(whoami)}"
+mkdir -p "\$TMPDIR"
+chmod 700 "\$TMPDIR"
+
 export DAGU_AUTH_MODE="\${DAGU_AUTH_MODE:-none}"
 exec "\$DAGU_BIN" worker \\
   --worker.id="\${WORKER_ID}" \\
