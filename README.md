@@ -6,7 +6,8 @@ Bootstrap and migration scripts for running a [Dagu](https://github.com/daguclou
 
 | Script | Purpose |
 | :--- | :--- |
-| `./setup_worker.sh` | Downloads the latest `dagu` binary to `~/jobs/bin/dagu`, creates `~/jobs/run_worker.sh` with `worker.id=<hostname>-<user>` and `worker.labels=host=<hostname>,user=<user>`, and enables/starts a user-level `systemd` service (`dagu-worker.service`). |
+| `./setup_worker.sh` | Downloads the latest `dagu` binary to `~/jobs/bin/dagu`, creates `~/jobs/run_worker.sh`, installs `~/jobs/update_client.sh` + a weekly `~/jobs/dags/<hostname>_<username>_update_client.yaml` Dagu job (`0 5 * * 0`), and enables/starts `dagu-worker.service`. |
+| `./update_client.sh` | Checks GitHub for the latest `restic` and `dagu` releases, updates binaries in place when a newer version is available, and restarts `dagu-worker.service` if `dagu` was updated. |
 | `./cron_to_dagu.sh` | Reads the current user's `crontab -l` (or a file), converts all cron jobs into Dagu YAML definitions under `~/jobs/dags/` prefixed with `<hostname>_<username>_`, and validates them with `dagu validate`. |
 | `./import_dags.sh` | Authenticates against the Dagu server API using username/password and creates or updates all `.yaml` workflows from `~/jobs/dags/`. |
 | `./disable_cron.sh` | Backs up the user's crontab to `~/jobs/crontab.bak`, comments out all active cron entries with `# [Replaced by Dagu]`, and adds a migration header. |
@@ -42,12 +43,12 @@ cd ~/jobs
 
 ## Script Reference
 
-### 1. `setup_worker.sh`
+### 1. `setup_worker.sh` & `update_client.sh`
 
-Downloads the `dagu` binary for the current OS/architecture into `~/jobs/bin/dagu`, generates `~/jobs/run_worker.sh`, and configures `~/.config/systemd/user/dagu-worker.service`.
+Downloads the `dagu` binary for the current OS/architecture into `~/jobs/bin/dagu`, generates `~/jobs/run_worker.sh`, installs `~/jobs/update_client.sh`, creates a weekly client auto-update Dagu job at `~/jobs/dags/<hostname>_<username>_update_client.yaml` (default schedule: `0 5 * * 0`, Sunday at 5:00 AM), and configures `~/.config/systemd/user/dagu-worker.service`.
 
 ```bash
-./setup_worker.sh <COORDINATOR_HOST> [COORDINATOR_PORT]
+./setup_worker.sh [-c "<CRON_SCHEDULE>"] <COORDINATOR_HOST> [COORDINATOR_PORT]
 ```
 
 **Example:**
@@ -60,6 +61,7 @@ Downloads the `dagu` binary for the current OS/architecture into `~/jobs/bin/dag
 - `--worker.labels`: `host=$(hostname -s),user=$(whoami)` (e.g., `host=llm-01,user=backtest01`)
 - `--worker.health-port`: `0` (disabled by default so multiple users on the same host can each run a worker without conflicting on port `8092`)
 - `TMPDIR`: `/tmp/dagu-$(whoami)` (isolated per user so multiple workers on the same host do not conflict on `/tmp/dagu` permissions)
+- `KillMode=process`: configured in `dagu-worker.service` so worker restarts do not terminate background processes spawned by Dagu jobs.
 
 **Managing the Systemd User Service:**
 ```bash

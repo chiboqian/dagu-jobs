@@ -249,11 +249,15 @@ for raw in raw_lines:
 used_names = set()
 generated_files = []
 
-# Remove stale .yaml files in output_dir before writing new ones
+# Remove stale crontab-converted .yaml files in output_dir before writing new ones
 for existing in os.listdir(output_dir):
     if existing.endswith(".yaml"):
+        existing_path = os.path.join(output_dir, existing)
         try:
-            os.remove(os.path.join(output_dir, existing))
+            with open(existing_path, "r", encoding="utf-8") as f:
+                first_line = f.readline()
+            if first_line.startswith("# Converted from user crontab"):
+                os.remove(existing_path)
         except OSError:
             pass
 
