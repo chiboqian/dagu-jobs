@@ -11,8 +11,9 @@ Bootstrap and migration scripts for running a [Dagu](https://github.com/daguclou
 | `./cron_to_dagu.sh` | Reads the current user's `crontab -l` (or a file), converts all cron jobs into Dagu YAML definitions under `~/jobs/dags/` prefixed with `<hostname>_<username>_`, and validates them with `dagu validate`. |
 | `./import_dags.sh` | Authenticates against the Dagu server API using username/password and creates or updates all `.yaml` workflows from `~/jobs/dags/`. |
 | `./disable_cron.sh` | Backs up the user's crontab to `~/jobs/crontab.bak`, comments out all active cron entries with `# [Replaced by Dagu]`, and adds a migration header. |
-| `./restic/setup_restic.sh` | Downloads the `restic` binary into `~/restic/restic`, prompts for a master password and stores it in `~/restic/.env`, initializes the backup repo at `<RESTIC_SERVER>/<hostname>-<username>/`, and creates `~/restic/backup.sh` and `~/restic/<hostname>_<username>_restic_backup.yaml`. |
+| `./restic/setup_restic.sh` | Downloads the `restic` binary into `~/restic/restic`, prompts for a master password and stores it in `~/restic/.env`, initializes the backup repo at `<RESTIC_SERVER>/<hostname>-<username>/`, and creates `~/restic/backup.sh`, `~/restic/restic-helper.sh`, and Dagu backup & monthly prune workflows. |
 | `./restic/backup.sh` | Loads `RESTIC_REPOSITORY` and `RESTIC_PASSWORD` from `~/restic/.env` and runs a `restic backup`. |
+| `./restic/restic-helper.sh` | CLI helper that automatically sources `~/restic/.env` and provides shortcuts for snapshots, pruning (7 daily, 4 weekly, 6 monthly), restoring, checking, and unlocking. |
 
 *(Generated artifacts `bin/`, `run_worker.sh`, `dags/`, and `crontab.bak*` are git-ignored.)*
 
@@ -147,12 +148,14 @@ Comments out all active cron entries in the current user's `crontab`, prefixes t
 
 ### 1. `restic/setup_restic.sh`
 
-Downloads the latest `restic` binary into `~/restic/restic`, prompts for the master password (or reuses the existing one in `~/restic/.env`), saves `RESTIC_REPOSITORY` and `RESTIC_PASSWORD` to `~/restic/.env` (`chmod 600`), initializes the target repository on the Restic REST server at `rest:http://<RESTIC_SERVER>/<hostname>-<username>/`, and creates `~/restic/backup.sh` along with a uniquely named Dagu job definition at `~/restic/<hostname>_<username>_restic_backup.yaml` with a randomized nightly schedule between 11:00 PM and 5:00 AM.
+Downloads the latest `restic` binary into `~/restic/restic`, prompts for the master password (or reuses the existing one in `~/restic/.env`), saves `RESTIC_REPOSITORY` and `RESTIC_PASSWORD` to `~/restic/.env` (`chmod 600`), initializes the target repository on the Restic REST server at `rest:http://<RESTIC_SERVER>/<hostname>-<username>/`, and creates `~/restic/backup.sh`, `~/restic/restic-helper.sh`, along with two uniquely named Dagu job definitions:
+- `<hostname>_<username>_restic_backup.yaml` (nightly backup between 11:00 PM and 5:00 AM)
+- `<hostname>_<username>_restic_prune.yaml` (monthly retention prune at the end of the month: `50 23 28-31 * *`)
 
 ```bash
 ./restic/setup_restic.sh <RESTIC_SERVER>
 
-# Import the generated restic backup job into Dagu:
+# Import the generated restic backup and prune jobs into Dagu:
 ./import_dags.sh -d ~/restic
 ```
 
@@ -171,4 +174,39 @@ Reads `RESTIC_REPOSITORY`, `RESTIC_PASSWORD`, and `BACKUP_PATHS` from `~/restic/
 
 # Or back up specific directories/files
 ~/restic/backup.sh ~/jobs ~/luna-strategy-Trading
+```
+
+### 3. `restic/restic-helper.sh` (installed to `~/restic/restic-helper.sh`)
+
+Convenience wrapper that automatically loads credentials from `.env` in the same directory and runs restic commands.
+
+```bash
+# View help menu and available shortcuts
+~/restic/restic-helper.sh
+
+# List all snapshots
+~/restic/restic-helper.sh snapshots
+
+# Prune old snapshots (defaults to keeping 7 daily, 4 weekly, 6 monthly)
+~/restic/restic-helper.sh prune
+~/restic/restic-helper.sh prune --dry-run
+
+# Specify custom retention schedule on the command line
+~/restic/restic-helper.sh prune -d 14 -w 8 -m 12
+~/restic/restic-helper.sh prune --daily 30 --weekly 0 --monthly 12 --yearly 2
+~/restic/restic-helper.sh prune --keep-last 10 --dry-run
+
+# Search for a file pattern across all snapshots
+~/restic/restic-helper.sh find "*.yaml"
+
+# Restore latest snapshot
+~/restic/restic-helper.sh restore-latest /tmp/restore-dir
+
+# Repository maintenance
+~/restic/restic-helper.sh check
+~/restic/restic-helper.sh unlock
+~/restic/restic-helper.sh stats
+
+# Or pass any standard restic command directly
+~/restic/restic-helper.sh ls latest
 ```

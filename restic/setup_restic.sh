@@ -6,6 +6,7 @@ RESTIC_DIR="${RESTIC_DIR:-$HOME/restic}"
 RESTIC_BIN="${RESTIC_DIR}/restic"
 ENV_FILE="${RESTIC_DIR}/.env"
 BACKUP_SCRIPT="${RESTIC_DIR}/backup.sh"
+HELPER_SCRIPT="${RESTIC_DIR}/restic-helper.sh"
 HOST_SHORT="$(hostname -s)"
 CURRENT_USER="$(whoami)"
 SAFE_PREFIX="$(echo "${HOST_SHORT}_${CURRENT_USER}" | tr -cs 'A-Za-z0-9_' '_' | sed -E 's/^_+|_+$//g' | tr '[:upper:]' '[:lower:]')"
@@ -13,11 +14,16 @@ DAG_NAME="${SAFE_PREFIX}_restic_backup"
 DAG_NAME="${DAG_NAME:0:39}"
 DAG_NAME="${DAG_NAME%_}"
 DAG_FILE="${RESTIC_DIR}/${DAG_NAME}.yaml"
+PRUNE_DAG_NAME="${SAFE_PREFIX}_restic_prune"
+PRUNE_DAG_NAME="${PRUNE_DAG_NAME:0:39}"
+PRUNE_DAG_NAME="${PRUNE_DAG_NAME%_}"
+PRUNE_DAG_FILE="${RESTIC_DIR}/${PRUNE_DAG_NAME}.yaml"
 
 RESTIC_SERVER="${RESTIC_SERVER:-}"
 RESTIC_PASSWORD="${RESTIC_PASSWORD:-}"
 BACKUP_PATHS="${BACKUP_PATHS:-$HOME}"
 BACKUP_SCHEDULE="${BACKUP_SCHEDULE:-}"
+PRUNE_SCHEDULE="${PRUNE_SCHEDULE:-50 23 28-31 * *}"
 
 usage() {
   cat <<EOF
@@ -25,13 +31,14 @@ Usage: $0 [options] <RESTIC_SERVER>
 
 Download the restic binary into ~/restic, save the master password in ~/restic/.env,
 initialize the backup repository at the REST server under <hostname>-<username>,
-and create ~/restic/backup.sh and ~/restic/<hostname>_<username>_restic_backup.yaml.
+and create ~/restic/backup.sh, ~/restic/restic-helper.sh, and Dagu backup/prune workflows.
 
 Options:
   -s, --server URL        Restic REST server URL or host:port (e.g. http://backup.example.com:8000)
   -p, --password PASS     Restic master password (prompted interactively if omitted)
   -b, --backup-paths DIR  Space-separated default paths to back up (default: \$HOME)
   -c, --schedule CRON     Cron schedule for the Dagu backup job (default: randomized between 11 PM and 5 AM)
+      --prune-schedule CRON Cron schedule for the Dagu prune job (default: 50 23 28-31 * *)
   -h, --help              Show this help message
 
 Examples:
@@ -57,6 +64,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     -c|--schedule)
       BACKUP_SCHEDULE="$2"
+      shift 2
+      ;;
+    --prune-schedule)
+      PRUNE_SCHEDULE="$2"
       shift 2
       ;;
     -h|--help)
@@ -176,22 +187,29 @@ with open(env_file, "w", encoding="utf-8") as f:
 os.chmod(env_file, 0o600)
 PYEOF
 
-# 3. Create ~/restic/backup.sh
-echo "[3/5] Creating backup runner script at ${BACKUP_SCRIPT}..."
+# 3. Create ~/restic/backup.sh and ~/restic/restic-helper.sh
+echo "[3/5] Creating backup runner and helper scripts at ${RESTIC_DIR}..."
 if [[ "$(realpath "$SCRIPT_DIR/backup.sh")" != "$(realpath -m "$BACKUP_SCRIPT")" ]]; then
   cp "$SCRIPT_DIR/backup.sh" "$BACKUP_SCRIPT"
 fi
 chmod +x "$BACKUP_SCRIPT"
 
-# 4. Create Dagu job definition at ~/restic/<hostname>_<username>_restic_backup.yaml
+if [[ -f "$SCRIPT_DIR/restic-helper.sh" ]]; then
+  if [[ "$(realpath "$SCRIPT_DIR/restic-helper.sh")" != "$(realpath -m "$HELPER_SCRIPT")" ]]; then
+    cp "$SCRIPT_DIR/restic-helper.sh" "$HELPER_SCRIPT"
+  fi
+  chmod +x "$HELPER_SCRIPT"
+fi
+
+# 4. Create Dagu backup and prune job definitions
 if [[ -z "$BACKUP_SCHEDULE" ]]; then
   HOURS=(23 0 1 2 3 4)
   RAND_HOUR="${HOURS[$((RANDOM % ${#HOURS[@]}))]}"
   RAND_MIN="$((RANDOM % 60))"
   BACKUP_SCHEDULE="${RAND_MIN} ${RAND_HOUR} * * *"
 fi
-rm -f "${RESTIC_DIR}/restic_backup.yaml"
-echo "[4/5] Creating Dagu backup job at ${DAG_FILE}..."
+rm -f "${RESTIC_DIR}/restic_backup.yaml" "${RESTIC_DIR}/restic_prune.yaml"
+echo "[4/5] Creating Dagu backup and prune jobs at ${RESTIC_DIR}..."
 cat > "$DAG_FILE" <<EOF
 # Restic backup job (${TARGET_NAME})
 description: "Restic backup for ${TARGET_NAME} to ${SERVER_CLEAN}/${TARGET_NAME}/"
@@ -210,11 +228,42 @@ steps:
     run: "${BACKUP_SCRIPT}"
 EOF
 
+cat > "$PRUNE_DAG_FILE" <<EOF
+# Restic prune job (${TARGET_NAME})
+description: "Restic monthly retention prune for ${TARGET_NAME} repository"
+schedule: "${PRUNE_SCHEDULE}"
+labels:
+  host: "${HOST_SHORT}"
+  user: "${CURRENT_USER}"
+  type: "maintenance"
+worker_selector:
+  host: "${HOST_SHORT}"
+  user: "${CURRENT_USER}"
+shell: "/bin/bash"
+working_dir: "${RESTIC_DIR}"
+steps:
+  - name: ${PRUNE_DAG_NAME}
+    run: |
+      # Run only on the last day of the month
+      [ "\$(date -d tomorrow +%d)" = "01" ] || exit 0
+      "${HELPER_SCRIPT}" prune
+EOF
+
 # Also copy into the repo's dags/ folder if present so ./import_dags.sh picks it up automatically
-REPO_DAGS_DIR="$(cd "$SCRIPT_DIR/.." && pwd)/dags"
-if [[ -d "$REPO_DAGS_DIR" ]]; then
-  rm -f "${REPO_DAGS_DIR}/restic_backup.yaml"
+REPO_DIR=""
+if [[ -f "$SCRIPT_DIR/../import_dags.sh" ]]; then
+  REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+elif [[ -f "$HOME/dagu-jobs/import_dags.sh" ]]; then
+  REPO_DIR="$HOME/dagu-jobs"
+elif [[ -f "$PWD/import_dags.sh" ]]; then
+  REPO_DIR="$PWD"
+fi
+
+REPO_DAGS_DIR="${REPO_DIR:+${REPO_DIR}/dags}"
+if [[ -n "$REPO_DAGS_DIR" && -d "$REPO_DAGS_DIR" ]]; then
+  rm -f "${REPO_DAGS_DIR}/restic_backup.yaml" "${REPO_DAGS_DIR}/restic_prune.yaml"
   cp "$DAG_FILE" "${REPO_DAGS_DIR}/${DAG_NAME}.yaml"
+  cp "$PRUNE_DAG_FILE" "${REPO_DAGS_DIR}/${PRUNE_DAG_NAME}.yaml"
 fi
 
 # 5. Initialize backup target at the REST server
@@ -232,7 +281,15 @@ echo "  Binary:      ${RESTIC_BIN}"
 echo "  Env File:    ${ENV_FILE} (mode 600)"
 echo "  Repository:  ${RESTIC_REPOSITORY}"
 echo "  Run Backup:  ${BACKUP_SCRIPT}"
-echo "  Dagu Job:    ${DAG_FILE} (schedule: ${BACKUP_SCHEDULE})"
+echo "  Helper CLI:  ${HELPER_SCRIPT}"
+echo "  Backup DAG:  ${DAG_FILE} (schedule: ${BACKUP_SCHEDULE})"
+echo "  Prune DAG:   ${PRUNE_DAG_FILE} (schedule: ${PRUNE_SCHEDULE})"
+RESTIC_DISPLAY_DIR="${RESTIC_DIR/#$HOME/~}"
+IMPORT_CMD="~/dagu-jobs/import_dags.sh"
+if [[ -n "$REPO_DIR" && "$REPO_DIR" != "$HOME/dagu-jobs" && -f "$REPO_DIR/import_dags.sh" ]]; then
+  IMPORT_CMD="${REPO_DIR/#$HOME/~}/import_dags.sh"
+fi
+
 echo ""
-echo "To import the backup job into Dagu, run:"
-echo "  $(cd "$SCRIPT_DIR/.." && pwd)/import_dags.sh -d ${RESTIC_DIR}"
+echo "To import the backup and prune jobs into Dagu, run:"
+echo "  ${IMPORT_CMD} -d ${RESTIC_DISPLAY_DIR}"
