@@ -4,8 +4,8 @@ Read and update the jobs (DAGs) on the Dagu server that schedules every host's j
 
 The server is DAGU_SERVER (default http://jobs.luna-strategy.com:8080), API v1, authenticated
 with DAGU_API_KEY from the environment or ~/.config/dagu-jobs/api.env (DAGU_ENV_FILE overrides
-the path; a full-access key: never print it). Each job runs on the worker its worker_selector names (host + user); its labels should be
-exactly that host and user. Schedules are New York time.
+the path; a full-access key: never print it). Each job runs on the worker its worker_selector names (host + user); its labels must include
+that host and user (`host`, `user`), and may add others. Schedules are New York time.
 
 Reading is safe. Changing a job is two steps: `put` without --yes prints the diff against the
 live spec and changes nothing; with --yes it saves the live spec to
@@ -99,8 +99,8 @@ def label(labels: List[str], k: str) -> str:
 
 
 def check_spec(spec: str) -> List[str]:
-    """Problems with a spec: unparsable YAML, no steps, masked text from `show`, labels not
-    exactly the worker_selector's host and user."""
+    """Problems with a spec: unparsable YAML, no steps, masked text from `show`, `host` / `user`
+    labels missing or different from the worker_selector's. Other labels are allowed."""
     if '<m>' in spec or '<key>' in spec:
         return ["masked text (<m>/<key>) from `show`: edit an `export` copy instead"]
     try:
@@ -115,8 +115,14 @@ def check_spec(spec: str) -> List[str]:
     ws = y.get('worker_selector') or {}
     if not ws.get('host') or not ws.get('user'):
         problems.append('worker_selector lacks host or user: the job could run on any worker')
-    if (y.get('labels') or {}) != {'host': ws.get('host'), 'user': ws.get('user')}:
-        problems.append(f"labels {y.get('labels')} are not exactly the worker_selector's host and user")
+    labels = y.get('labels') or {}
+    if isinstance(labels, str):                     # Dagu also takes "k=v,k2=v2" ...
+        labels = labels.split(',')
+    if isinstance(labels, list):                    # ... and ["k=v", "bare"]
+        labels = dict((str(x).strip().split('=', 1) + [''])[:2] for x in labels)
+    for k in ('host', 'user'):
+        if str(labels.get(k, '')) != str(ws.get(k, '')):
+            problems.append(f"label {k}={labels.get(k)!r} is not the worker_selector's {k} {ws.get(k)!r}")
     return problems
 
 

@@ -109,10 +109,17 @@ class Put(unittest.TestCase):
 
 
 class Checks(unittest.TestCase):
-    def test_labels_must_match_worker_selector(self):
+    def test_host_and_user_labels_required_others_optional(self):
         self.assertEqual(dj.check_spec(SPEC), [])
-        extra = SPEC.replace('  user: "production"\nworker', '  user: "production"\n  type: "x"\nworker')
-        self.assertTrue(any("labels" in p for p in dj.check_spec(extra)))
+        extra = SPEC.replace('  user: "production"\nworker', '  user: "production"\n  type: "x"\n  tag: ""\nworker')
+        self.assertEqual(dj.check_spec(extra), [])
+        no_user = SPEC.replace('labels:\n  host: "n8n-prod-01"\n  user: "production"\n', 'labels:\n  host: "n8n-prod-01"\n')
+        self.assertTrue(any(p.startswith("label user=") for p in dj.check_spec(no_user)))
+        wrong_host = SPEC.replace('labels:\n  host: "n8n-prod-01"', 'labels:\n  host: "llm-01"')
+        self.assertTrue(any(p.startswith("label host=") for p in dj.check_spec(wrong_host)))
+        as_list = SPEC.replace('labels:\n  host: "n8n-prod-01"\n  user: "production"\n',
+                               'labels:\n  - host=n8n-prod-01\n  - user=production\n  - tag\n')
+        self.assertEqual(dj.check_spec(as_list), [])
 
     def test_mask(self):
         self.assertEqual(dj.mask(f"U12345678 key {KEY} 2026", KEY), "U<m> key <key> 2026")

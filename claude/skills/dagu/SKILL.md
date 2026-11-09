@@ -25,20 +25,23 @@ deleted on 2026-11-03. The server is the source of truth.
 | `n8n-prod-01` / `production` | Production trading: engine and daemon start/stop, `sync_trades_r2`, log uploads, reports, live health check, `sync_alpaca_fees` |
 | `n8n-prod-01` / `ibkr-01` | The IB Gateway user: weekly gateway stop/start/restart, its backups |
 
-**Labels:** a job's labels must be exactly its `worker_selector`'s host and user, nothing else:
+**Labels:** every job must have `host` and `user` labels equal to its `worker_selector`'s host and
+user. Other labels are optional:
 
 ```yaml
 labels:
-  host: "n8n-prod-01"
-  user: "production"
+  host: "n8n-prod-01"        # required, = worker_selector.host
+  user: "production"         # required, = worker_selector.user
+  type: "backup"             # optional; any further labels are fine
 worker_selector:
   host: "n8n-prod-01"
   user: "production"
 ```
 
-The `ibkr-01` jobs keep `user: "ibkr-01"`. The setup scripts in `~/dagu-jobs` (`setup_worker.sh`,
-`restic/setup_restic.sh`) add a `type` label to the backup, prune and update-client jobs, so
-re-running setup brings it back.
+The `ibkr-01` jobs keep `user: "ibkr-01"`. Optional labels in use:
+- `type`: added by the setup scripts in `~/dagu-jobs` (`setup_worker.sh`, `restic/setup_restic.sh`) to the
+  backup, prune and update-client jobs;
+- `momentum_paper_trading` (no value): the MomentumTrading paper-book jobs.
 
 ## The tool: `~/dagu-jobs/dagu_jobs.py`
 
@@ -65,7 +68,8 @@ $DJ put JOB FILE [--create] [--yes]
 
 1. **Read first:** `list`, then `show` and `runs` for the job.
 2. **Dry run:** edit an `export` copy and run `put` without `--yes`. It prints the diff against the
-   live spec, warns about wrong labels, and changes nothing. Show the user that diff.
+   live spec, warns about a missing or wrong `host`/`user` label, and changes nothing. Show the user
+   that diff.
 3. **Apply only on the user's OK for that change.**
    - Production (`n8n-prod-01`) jobs belong to the user: never change them on your own initiative,
      and approval of one change does not cover the next.
