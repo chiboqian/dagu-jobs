@@ -12,3 +12,4 @@ crontab.bak*
 .venv/
 backups/
 __pycache__/
+*.egg-info/

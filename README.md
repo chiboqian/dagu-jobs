@@ -240,3 +240,33 @@ mkdir -p ~/.claude/skills && ln -sfn ~/dagu-jobs/claude/skills/dagu ~/.claude/sk
 - **Using it:** `/dagu` then works in every project, for example
   `/dagu list production` or `/dagu why did nightly_cache fail`.
 
+---
+
+## `luna_ops`: shared Gmail, Cloudflare R2 and D1 clients
+
+One copy of the code every project uses for these services, instead of one per repo:
+
+| Module | Use |
+|---|---|
+| `luna_ops.mail` | `send(subject, text=, html=, to=)` through Gmail SMTP (to `ALERT_EMAIL` by default); `local_fallback=True` falls back to the host's `mail` command; `check_login()` |
+| `luna_ops.r2` | `client()`, `upload_file(path, key, bucket_name=None, kind='logs')`, `upload_page(path, key)` (dashboard bucket, returns its URL), `list_keys`, `read_bytes`; kinds: `logs` = `R2_BUCKET_NAME`, `dashboard` = `R2_DASHBOARD_BUCKET` |
+| `luna_ops.d1` | `D1().run(sql, params)`: raises on failure, retries network errors and HTTP 5xx |
+
+Install it into a project's venv (boto3 comes with the `r2` extra):
+
+```bash
+<project>/.venv/bin/pip install -e ~/dagu-jobs[r2]
+```
+
+**Credentials.** Each lookup tries three places in order:
+1. the environment;
+2. the env file the caller passes (`env_file=`);
+3. `~/.config/luna-ops/ops.env` (`LUNA_OPS_ENV` overrides the path).
+
+A project that already loads its own `.env` therefore keeps working unchanged. The names are
+`CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_D1_DATABASE_ID`, `R2_ACCESS_KEY_ID`,
+`R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`, `R2_DASHBOARD_BUCKET`, `R2_PUBLIC_URL`, `GMAIL_USER`,
+`GMAIL_PASSWORD` (a Google app password) and `ALERT_EMAIL`. Keep `ops.env` at `chmod 600`.
+
+Tests: `.venv/bin/python tests/test_luna_ops.py`.
+
