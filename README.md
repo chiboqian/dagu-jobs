@@ -10,6 +10,7 @@ Bootstrap and migration scripts for running a [Dagu](https://github.com/daguclou
 | `./update_client.sh` | Checks GitHub for the latest `restic` and `dagu` releases, updates binaries in place when a newer version is available, and restarts `dagu-worker.service` if `dagu` was updated. |
 | `./cron_to_dagu.sh` | Reads the current user's `crontab -l` (or a file), converts all cron jobs into Dagu YAML definitions under `~/jobs/dags/` prefixed with `<hostname>_<username>_`, and validates them with `dagu validate`. |
 | `./import_dags.sh` | Authenticates against the Dagu server API using username/password and creates or updates all `.yaml` workflows from `~/jobs/dags/`. |
+| `dagu_jobs.py` | Lists, shows, exports and changes jobs on the Dagu server through its API (`list`, `show`, `runs`, `log`, `export`, `put` with a dry-run diff and a backup before `--yes`). Used by the `/dagu` Claude Code skill in `claude/skills/dagu/`. |
 | `./disable_cron.sh` | Backs up the user's crontab to `~/jobs/crontab.bak`, comments out all active cron entries with `# [Replaced by Dagu]`, and adds a migration header. |
 | `./restic/setup_restic.sh` | Downloads the `restic` binary into `~/restic/restic`, prompts for a master password and stores it in `~/restic/.env`, initializes the backup repo at `<RESTIC_SERVER>/<hostname>-<username>/`, and creates `~/restic/backup.sh`, `~/restic/restic-helper.sh`, and Dagu backup & monthly prune workflows. |
 | `./restic/backup.sh` | Loads `RESTIC_REPOSITORY` and `RESTIC_PASSWORD` from `~/restic/.env` and runs a `restic backup`. |
@@ -210,3 +211,32 @@ Convenience wrapper that automatically loads credentials from `.env` in the same
 # Or pass any standard restic command directly
 ~/restic/restic-helper.sh ls latest
 ```
+
+---
+
+## `dagu_jobs.py` and the `/dagu` Claude Code skill
+
+`dagu_jobs.py` reads and changes jobs through the Dagu server's API (v1). `claude/skills/dagu/SKILL.md`
+teaches Claude Code to use it. Both live here, not in a project, so every project shares one copy.
+They moved from `luna-strategy-Trading/Trading` (`util/dagu_jobs.py`, `.claude/skills/dagu/`) on
+2026-11-09.
+
+Set up a host once:
+
+```bash
+cd ~/dagu-jobs
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+mkdir -p ~/.config/dagu-jobs && chmod 700 ~/.config/dagu-jobs
+# put the line DAGU_API_KEY=... in ~/.config/dagu-jobs/api.env, then: chmod 600 ~/.config/dagu-jobs/api.env
+mkdir -p ~/.claude/skills && ln -sfn ~/dagu-jobs/claude/skills/dagu ~/.claude/skills/dagu
+.venv/bin/python tests/test_dagu_jobs.py
+```
+
+- **Paths:** the skill's commands assume the repo is at `~/dagu-jobs`. On a host that cloned it to
+  `~/jobs`, add `ln -s ~/jobs ~/dagu-jobs`.
+- **Overrides:** the key can also come from `DAGU_API_KEY` in the environment. `DAGU_ENV_FILE`
+  changes the key file's path, and `DAGU_SERVER` the server.
+- **Backups:** `put --yes` writes them to `backups/` (git-ignored).
+- **Using it:** `/dagu` then works in every project, for example
+  `/dagu list production` or `/dagu why did nightly_cache fail`.
+
