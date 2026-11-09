@@ -50,20 +50,56 @@ def upload_page(path: Path | str, key: str, bucket_name: str | None = None,
     return f'{base}/{key}' if base else key
 
 
-def list_keys(prefix: str = '', bucket_name: str | None = None, kind: str = 'logs',
-              env_file: Path | str | None = None, s3=None) -> list[str]:
+def put_object(key: str, body: bytes | str, bucket_name: str | None = None, kind: str = 'logs',
+               content_type: str | None = None, cache_control: str | None = None,
+               env_file: Path | str | None = None, s3=None) -> str:
+    """Write `body` (bytes, or a str as UTF-8) as `key`; returns 'bucket/key'."""
+    b = _name(bucket_name, kind, env_file)
+    kw = {'Bucket': b, 'Key': key, 'Body': body.encode() if isinstance(body, str) else body}
+    if content_type:
+        kw['ContentType'] = content_type
+    if cache_control:
+        kw['CacheControl'] = cache_control
+    (s3 or client(env_file)).put_object(**kw)
+    return f'{b}/{key}'
+
+
+def delete_object(key: str, bucket_name: str | None = None, kind: str = 'logs',
+                  env_file: Path | str | None = None, s3=None) -> str:
+    """Delete `key` (no error when it doesn't exist); returns 'bucket/key'."""
+    b = _name(bucket_name, kind, env_file)
+    (s3 or client(env_file)).delete_object(Bucket=b, Key=key)
+    return f'{b}/{key}'
+
+
+def download_file(key: str, path: Path | str, bucket_name: str | None = None, kind: str = 'logs',
+                  env_file: Path | str | None = None, s3=None) -> Path:
+    """Save `key` to `path`; returns the path. Raises when the key doesn't exist."""
+    b = _name(bucket_name, kind, env_file)
+    (s3 or client(env_file)).download_file(b, key, str(path))
+    return Path(path)
+
+
+def list_objects(prefix: str = '', bucket_name: str | None = None, kind: str = 'logs',
+                 env_file: Path | str | None = None, s3=None) -> list[dict]:
+    """Every object under `prefix` as S3 lists it (Key, LastModified, Size, ...), across all pages."""
     s3 = s3 or client(env_file)
     b = _name(bucket_name, kind, env_file)
-    keys, token = [], None
+    objects, token = [], None
     while True:
         kw = {'Bucket': b, 'Prefix': prefix}
         if token:
             kw['ContinuationToken'] = token
         page = s3.list_objects_v2(**kw)
-        keys += [o['Key'] for o in page.get('Contents', [])]
+        objects += page.get('Contents', [])
         if not page.get('IsTruncated'):
-            return keys
+            return objects
         token = page.get('NextContinuationToken')
+
+
+def list_keys(prefix: str = '', bucket_name: str | None = None, kind: str = 'logs',
+              env_file: Path | str | None = None, s3=None) -> list[str]:
+    return [o['Key'] for o in list_objects(prefix, bucket_name, kind, env_file, s3)]
 
 
 def read_bytes(key: str, bucket_name: str | None = None, kind: str = 'logs',

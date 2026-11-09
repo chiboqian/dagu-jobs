@@ -6,4 +6,4 @@ the path), so a project that already loads its own .env keeps working unchanged.
     from luna_ops import mail, r2
     from luna_ops.d1 import D1
 """
-__version__ = '0.1.0'
+__version__ = '0.2.0'

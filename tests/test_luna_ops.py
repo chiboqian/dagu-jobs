@@ -5,6 +5,7 @@ Run: .venv/bin/python tests/test_luna_ops.py -v
 """
 
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -92,16 +93,44 @@ class Mail(Base):
         with self.assertRaises(RuntimeError):
             mail.send('s', text='t')
 
+    def test_an_explicit_empty_text_body_is_sent(self):
+        msg = mail.message('s', 'a@x', 'b@x', text='')
+        self.assertEqual((msg.get_content_type(), msg.get_content()), ('text/plain', '\n'))
+
+    def test_send_local(self):
+        with mock.patch('subprocess.run') as run:
+            mail.send_local('s', 'body', 'a@x')
+        run.assert_called_once_with(['mail', '-s', 's', 'a@x'], input='body', text=True, check=True)
+        failed = subprocess.CalledProcessError(3, ['mail'])
+        with mock.patch('subprocess.run', side_effect=failed):
+            with self.assertRaises(subprocess.CalledProcessError):
+                mail.send_local('s', 'body', 'a@x')
+            self.write(self.ops, 'GMAIL_USER=me@x\nGMAIL_PASSWORD=pw\nALERT_EMAIL=alerts@x\n')
+            with mock.patch('smtplib.SMTP', side_effect=OSError('down')), \
+                    mock.patch('shutil.which', return_value='/usr/bin/mail'):
+                with self.assertRaisesRegex(RuntimeError, r'local mail failed \(exit 3\)'):
+                    mail.send('s', text='t', local_fallback=True)
+
 
 class FakeS3:
     def __init__(self, pages=None):
-        self.uploads, self.pages = [], list(pages or [])
+        self.uploads, self.pages, self.calls = [], list(pages or []), []
 
     def upload_file(self, path, bucket, key, ExtraArgs=None):
         self.uploads.append((path, bucket, key, ExtraArgs))
 
     def list_objects_v2(self, **kw):
+        self.calls.append(('list', kw))
         return self.pages.pop(0)
+
+    def put_object(self, **kw):
+        self.calls.append(('put', kw))
+
+    def delete_object(self, **kw):
+        self.calls.append(('delete', kw))
+
+    def download_file(self, bucket, key, path):
+        self.calls.append(('download', (bucket, key, path)))
 
 
 class R2(Base):
@@ -128,9 +157,37 @@ class R2(Base):
                      {'Contents': [{'Key': 'b'}], 'IsTruncated': False}])
         self.assertEqual(r2.list_keys('x/', s3=s3), ['a', 'b'])
 
+    def test_put_object_encodes_text_and_sets_headers(self):
+        s3 = FakeS3()
+        self.assertEqual(r2.put_object('a.json', '{"x": "é"}', content_type='application/json', s3=s3),
+                         'logs-b/a.json')
+        r2.put_object('p.html', b'<p>', 'dash-b', content_type='text/html', cache_control='no-store', s3=s3)
+        r2.put_object('raw', b'\x00', s3=s3)
+        self.assertEqual([c[1] for c in s3.calls], [
+            {'Bucket': 'logs-b', 'Key': 'a.json', 'Body': '{"x": "é"}'.encode(), 'ContentType': 'application/json'},
+            {'Bucket': 'dash-b', 'Key': 'p.html', 'Body': b'<p>', 'ContentType': 'text/html', 'CacheControl': 'no-store'},
+            {'Bucket': 'logs-b', 'Key': 'raw', 'Body': b'\x00'}])
+
+    def test_delete_and_download(self):
+        s3 = FakeS3()
+        self.assertEqual(r2.delete_object('old.json', s3=s3), 'logs-b/old.json')
+        self.assertEqual(r2.download_file('logs/x.gz', Path('/tmp/x.gz'), 'other', s3=s3), Path('/tmp/x.gz'))
+        self.assertEqual(s3.calls, [('delete', {'Bucket': 'logs-b', 'Key': 'old.json'}),
+                                    ('download', ('other', 'logs/x.gz', '/tmp/x.gz'))])
+
+    def test_list_objects_keeps_the_metadata(self):
+        s3 = FakeS3([{'Contents': [{'Key': 'a', 'LastModified': 1}], 'IsTruncated': True, 'NextContinuationToken': 't'},
+                     {'IsTruncated': False}])
+        self.assertEqual(r2.list_objects('p/', s3=s3), [{'Key': 'a', 'LastModified': 1}])
+        self.assertEqual(s3.calls[1][1], {'Bucket': 'logs-b', 'Prefix': 'p/', 'ContinuationToken': 't'})
+
     def test_client_needs_credentials(self):
         with self.assertRaises(RuntimeError):
             r2.client()
+        for call in (lambda: r2.put_object('k', b''), lambda: r2.delete_object('k'),
+                     lambda: r2.download_file('k', '/tmp/k')):
+            with self.assertRaises(RuntimeError):
+                call()
 
 
 class D1(Base):
@@ -142,6 +199,17 @@ class D1(Base):
     def test_url_and_auth(self):
         self.assertTrue(self.db.url.endswith('/accounts/acc/d1/database/db/query'))
         self.assertEqual(self.db.headers['Authorization'], 'Bearer tok')
+
+    def test_explicit_credentials_are_used_as_given(self):
+        db = d1.D1(account_id='a2', database_id='db2', api_token='t2')
+        self.assertTrue(db.url.endswith('/accounts/a2/d1/database/db2/query'))
+        self.assertEqual(db.headers['Authorization'], 'Bearer t2')
+        self.assertTrue(d1.D1(account_id='a3').url.endswith('/accounts/a3/d1/database/db/query'))
+        self.ops.write_text('')
+        d1.D1(account_id='a', database_id='b', api_token='c')          # nothing looked up
+        with self.assertRaises(RuntimeError) as e:
+            d1.D1(account_id='a', database_id='b')
+        self.assertIn('CLOUDFLARE_API_TOKEN', str(e.exception))
 
     def test_retries_server_errors_then_returns_rows(self):
         ok = (200, {'success': True, 'result': [{'results': [{'n': 1}]}]}, '')

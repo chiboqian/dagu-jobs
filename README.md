@@ -248,9 +248,9 @@ One copy of the code every project uses for these services, instead of one per r
 
 | Module | Use |
 |---|---|
-| `luna_ops.mail` | `send(subject, text=, html=, to=)` through Gmail SMTP (to `ALERT_EMAIL` by default); `local_fallback=True` falls back to the host's `mail` command; `check_login()` |
-| `luna_ops.r2` | `client()`, `upload_file(path, key, bucket_name=None, kind='logs')`, `upload_page(path, key)` (dashboard bucket, returns its URL), `list_keys`, `read_bytes`; kinds: `logs` = `R2_BUCKET_NAME`, `dashboard` = `R2_DASHBOARD_BUCKET` |
-| `luna_ops.d1` | `D1().run(sql, params)`: raises on failure, retries network errors and HTTP 5xx |
+| `luna_ops.mail` | `send(subject, text=, html=, to=)` through Gmail SMTP (to `ALERT_EMAIL` by default); `local_fallback=True` falls back to the host's `mail` command; `send_local(subject, body, to)` uses that command directly; `check_login()` |
+| `luna_ops.r2` | `client()`, `upload_file(path, key, bucket_name=None, kind='logs')`, `upload_page(path, key)` (dashboard bucket, returns its URL), `put_object(key, body)` (bytes or text), `download_file(key, path)`, `delete_object(key)`, `list_objects(prefix)` (with `LastModified`), `list_keys`, `read_bytes`; kinds: `logs` = `R2_BUCKET_NAME`, `dashboard` = `R2_DASHBOARD_BUCKET`. Pass `s3=client()` to reuse one client across calls |
+| `luna_ops.d1` | `D1().run(sql, params)`: raises on failure, retries network errors and HTTP 5xx; `D1(account_id=, database_id=, api_token=)` takes credentials directly |
 
 Install it into a project's venv (boto3 comes with the `r2` extra):
 

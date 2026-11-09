@@ -17,10 +17,13 @@ NAMES = ('CLOUDFLARE_ACCOUNT_ID', 'CLOUDFLARE_D1_DATABASE_ID', 'CLOUDFLARE_API_T
 
 class D1:
     def __init__(self, env_file: Path | str | None = None, database_id: str | None = None,
-                 timeout: float = 30, attempts: int = 3, pause: float = 2.0):
-        c = require(NAMES, env_file)
-        db = database_id or c['CLOUDFLARE_D1_DATABASE_ID']
-        self.url = f"https://api.cloudflare.com/client/v4/accounts/{c['CLOUDFLARE_ACCOUNT_ID']}/d1/database/{db}/query"
+                 timeout: float = 30, attempts: int = 3, pause: float = 2.0,
+                 account_id: str | None = None, api_token: str | None = None):
+        """Credentials passed here are used as given; the others are looked up (luna_ops.config)."""
+        given = dict(zip(NAMES, (account_id, database_id, api_token)))
+        c = {**require(tuple(n for n in NAMES if not given[n]), env_file), **{n: v for n, v in given.items() if v}}
+        self.url = (f"https://api.cloudflare.com/client/v4/accounts/{c['CLOUDFLARE_ACCOUNT_ID']}"
+                    f"/d1/database/{c['CLOUDFLARE_D1_DATABASE_ID']}/query")
         self.headers = {'Authorization': f"Bearer {c['CLOUDFLARE_API_TOKEN']}", 'Content-Type': 'application/json'}
         self.timeout, self.attempts, self.pause = timeout, attempts, pause
 
