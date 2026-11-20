@@ -12,8 +12,9 @@ Bootstrap and migration scripts for running a [Dagu](https://github.com/daguclou
 | `./import_dags.sh` | Authenticates against the Dagu server API using username/password and creates or updates all `.yaml` workflows from `~/jobs/dags/`. |
 | `dagu_jobs.py` | Lists, shows, exports and changes jobs on the Dagu server through its API (`list`, `show`, `runs`, `log`, `export`, `put` with a dry-run diff and a backup before `--yes`). Used by the `/dagu` Claude Code skill in `claude/skills/dagu/`. |
 | `./disable_cron.sh` | Backs up the user's crontab to `~/jobs/crontab.bak`, comments out all active cron entries with `# [Replaced by Dagu]`, and adds a migration header. |
-| `./restic/setup_restic.sh` | Downloads the `restic` binary into `~/restic/restic`, prompts for a master password and stores it in `~/restic/.env`, initializes the backup repo at `<RESTIC_SERVER>/<hostname>-<username>/`, and creates `~/restic/backup.sh`, `~/restic/restic-helper.sh`, and Dagu backup & monthly prune workflows. |
+| `./restic/setup_restic.sh` | Downloads the `restic` binary into `~/restic/restic`, prompts for a master password and stores it in `~/restic/.env`, initializes the backup repo at `<RESTIC_SERVER>/<hostname>-<username>/`, and creates `~/restic/backup.sh`, `~/restic/restore.sh`, `~/restic/restic-helper.sh`, and Dagu backup & monthly prune workflows. |
 | `./restic/backup.sh` | Loads `RESTIC_REPOSITORY` and `RESTIC_PASSWORD` from `~/restic/.env` and runs a `restic backup`. |
+| `./restic/restore.sh` | Loads `RESTIC_REPOSITORY` and `RESTIC_PASSWORD` from `~/restic/.env` and restores snapshots or specific paths (`--target`, `--in-place`, `--include`, `--dry-run`, `--list`, `--find`, `--dump`). |
 | `./restic/restic-helper.sh` | CLI helper that automatically sources `~/restic/.env` and provides shortcuts for snapshots, pruning (7 daily, 4 weekly, 6 monthly), restoring, checking, and unlocking. |
 
 *(Generated artifacts `bin/`, `run_worker.sh`, `dags/`, and `crontab.bak*` are git-ignored.)*
@@ -177,7 +178,31 @@ Reads `RESTIC_REPOSITORY`, `RESTIC_PASSWORD`, and `BACKUP_PATHS` from `~/restic/
 ~/restic/backup.sh ~/jobs ~/luna-strategy-Trading
 ```
 
-### 3. `restic/restic-helper.sh` (installed to `~/restic/restic-helper.sh`)
+### 3. `restic/restore.sh` (installed to `~/restic/restore.sh`)
+
+Reads `RESTIC_REPOSITORY` and `RESTIC_PASSWORD` from `~/restic/.env` and restores full snapshots or filtered paths.
+
+```bash
+# List available snapshots
+~/restic/restore.sh --list
+
+# Restore the entire latest snapshot to /tmp/restore
+~/restic/restore.sh /tmp/restore
+
+# Restore specific folder(s) from the latest snapshot into /tmp/restore
+~/restic/restore.sh /tmp/restore ~/luna-strategy-Trading/Trading/config
+
+# Preview restoring from a specific snapshot without writing files
+~/restic/restore.sh -s <snapshot_id> -t /tmp/restore -i ~/luna-strategy-Trading/Trading/config --dry-run
+
+# Restore a path in-place to its original location
+~/restic/restore.sh --in-place -i ~/luna-strategy-Trading/Trading/config
+
+# Dump a single file to stdout
+~/restic/restore.sh --dump ~/luna-strategy-Trading/Trading/README.md > /tmp/README.md
+```
+
+### 4. `restic/restic-helper.sh` (installed to `~/restic/restic-helper.sh`)
 
 Convenience wrapper that automatically loads credentials from `.env` in the same directory and runs restic commands.
 

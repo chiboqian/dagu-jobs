@@ -6,6 +6,7 @@ RESTIC_DIR="${RESTIC_DIR:-$HOME/restic}"
 RESTIC_BIN="${RESTIC_DIR}/restic"
 ENV_FILE="${RESTIC_DIR}/.env"
 BACKUP_SCRIPT="${RESTIC_DIR}/backup.sh"
+RESTORE_SCRIPT="${RESTIC_DIR}/restore.sh"
 HELPER_SCRIPT="${RESTIC_DIR}/restic-helper.sh"
 HOST_SHORT="$(hostname -s)"
 CURRENT_USER="$(whoami)"
@@ -187,12 +188,19 @@ with open(env_file, "w", encoding="utf-8") as f:
 os.chmod(env_file, 0o600)
 PYEOF
 
-# 3. Create ~/restic/backup.sh and ~/restic/restic-helper.sh
-echo "[3/5] Creating backup runner and helper scripts at ${RESTIC_DIR}..."
+# 3. Create ~/restic/backup.sh, ~/restic/restore.sh, and ~/restic/restic-helper.sh
+echo "[3/5] Creating backup, restore, and helper scripts at ${RESTIC_DIR}..."
 if [[ "$(realpath "$SCRIPT_DIR/backup.sh")" != "$(realpath -m "$BACKUP_SCRIPT")" ]]; then
   cp "$SCRIPT_DIR/backup.sh" "$BACKUP_SCRIPT"
 fi
 chmod +x "$BACKUP_SCRIPT"
+
+if [[ -f "$SCRIPT_DIR/restore.sh" ]]; then
+  if [[ "$(realpath "$SCRIPT_DIR/restore.sh")" != "$(realpath -m "$RESTORE_SCRIPT")" ]]; then
+    cp "$SCRIPT_DIR/restore.sh" "$RESTORE_SCRIPT"
+  fi
+  chmod +x "$RESTORE_SCRIPT"
+fi
 
 if [[ -f "$SCRIPT_DIR/restic-helper.sh" ]]; then
   if [[ "$(realpath "$SCRIPT_DIR/restic-helper.sh")" != "$(realpath -m "$HELPER_SCRIPT")" ]]; then
@@ -281,6 +289,7 @@ echo "  Binary:      ${RESTIC_BIN}"
 echo "  Env File:    ${ENV_FILE} (mode 600)"
 echo "  Repository:  ${RESTIC_REPOSITORY}"
 echo "  Run Backup:  ${BACKUP_SCRIPT}"
+echo "  Run Restore: ${RESTORE_SCRIPT}"
 echo "  Helper CLI:  ${HELPER_SCRIPT}"
 echo "  Backup DAG:  ${DAG_FILE} (schedule: ${BACKUP_SCHEDULE})"
 echo "  Prune DAG:   ${PRUNE_DAG_FILE} (schedule: ${PRUNE_SCHEDULE})"
