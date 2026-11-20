@@ -200,6 +200,11 @@ Reads `RESTIC_REPOSITORY` and `RESTIC_PASSWORD` from `~/restic/.env` and restore
 
 # Dump a single file to stdout
 ~/restic/restore.sh --dump ~/luna-strategy-Trading/Trading/README.md > /tmp/README.md
+
+# List or restore from another server/user's repository (--from <host>-<user> or -r <repo_url>)
+~/restic/restore.sh --list --from n8n-prod-01-production
+~/restic/restore.sh /tmp/restore-prod --from n8n-prod-01-production
+~/restic/restore.sh /tmp/restore-prod -r rest:http://backup.luna-strategy.com:8000/n8n-prod-01-production/
 ```
 
 ### 4. `restic/restic-helper.sh` (installed to `~/restic/restic-helper.sh`)

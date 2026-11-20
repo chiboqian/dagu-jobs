@@ -20,11 +20,25 @@ if [[ ! -f "$ENV_FILE" ]]; then
   exit 1
 fi
 
+CALLER_RESTIC_REPOSITORY="${RESTIC_REPOSITORY:-}"
+CALLER_RESTIC_PASSWORD="${RESTIC_PASSWORD:-}"
+CALLER_RESTIC_BIN="${RESTIC_BIN:-}"
+
 # Load RESTIC_REPOSITORY, RESTIC_PASSWORD, RESTIC_BIN, BACKUP_PATHS from .env
 set -a
 # shellcheck disable=SC1090
 source "$ENV_FILE"
 set +a
+
+if [[ -n "$CALLER_RESTIC_REPOSITORY" ]]; then
+  export RESTIC_REPOSITORY="$CALLER_RESTIC_REPOSITORY"
+fi
+if [[ -n "$CALLER_RESTIC_PASSWORD" ]]; then
+  export RESTIC_PASSWORD="$CALLER_RESTIC_PASSWORD"
+fi
+if [[ -n "$CALLER_RESTIC_BIN" ]]; then
+  export RESTIC_BIN="$CALLER_RESTIC_BIN"
+fi
 
 # Locate restic binary
 RESTIC_BIN="${RESTIC_BIN:-${SCRIPT_DIR}/restic}"
@@ -57,6 +71,9 @@ Restore Options:
   -t, --target <dir>       Target directory to extract files into
       --in-place           Restore directly to original absolute paths (--target /)
   -s, --snapshot <id>      Snapshot ID to restore from (default: latest)
+  -r, --repo <url>         Override RESTIC_REPOSITORY URL
+      --from <host-user>   Switch repo on the same server to <host-user> (e.g. n8n-prod-01-production)
+  -p, --password-file <f>  Read repository password from file instead of .env
   -i, --include <path>     Include only matching path/pattern (repeatable)
   -e, --exclude <path>     Exclude matching path/pattern (repeatable)
       --verify             Verify restored files after extraction
@@ -87,6 +104,10 @@ Examples:
 
   # Dump a single file to stdout
   $(basename "$0") --dump "${HOME}/luna-strategy-Trading/Trading/README.md" > /tmp/README.md
+
+  # List or restore from another server/user's repository
+  $(basename "$0") --list --from n8n-prod-01-production
+  $(basename "$0") /tmp/restore-prod --from n8n-prod-01-production
 EOF
 }
 
@@ -120,6 +141,48 @@ while [[ $# -gt 0 ]]; do
       ;;
     --snapshot=*)
       SNAPSHOT="${1#*=}"
+      shift
+      ;;
+    -r|--repo)
+      if [[ "$2" == http://* || "$2" == https://* ]]; then
+        export RESTIC_REPOSITORY="rest:$2"
+      else
+        export RESTIC_REPOSITORY="$2"
+      fi
+      shift 2
+      ;;
+    --repo=*)
+      REPO_VAL="${1#*=}"
+      if [[ "$REPO_VAL" == http://* || "$REPO_VAL" == https://* ]]; then
+        export RESTIC_REPOSITORY="rest:${REPO_VAL}"
+      else
+        export RESTIC_REPOSITORY="$REPO_VAL"
+      fi
+      shift
+      ;;
+    --from)
+      FROM_TARGET="${2%/}"
+      BASE_REPO="${RESTIC_REPOSITORY%/}"
+      BASE_SERVER="${BASE_REPO%/*}"
+      export RESTIC_REPOSITORY="${BASE_SERVER}/${FROM_TARGET}/"
+      shift 2
+      ;;
+    --from=*)
+      FROM_TARGET="${1#*=}"
+      FROM_TARGET="${FROM_TARGET%/}"
+      BASE_REPO="${RESTIC_REPOSITORY%/}"
+      BASE_SERVER="${BASE_REPO%/*}"
+      export RESTIC_REPOSITORY="${BASE_SERVER}/${FROM_TARGET}/"
+      shift
+      ;;
+    -p|--password-file)
+      export RESTIC_PASSWORD_FILE="$2"
+      unset RESTIC_PASSWORD
+      shift 2
+      ;;
+    --password-file=*)
+      export RESTIC_PASSWORD_FILE="${1#*=}"
+      unset RESTIC_PASSWORD
       shift
       ;;
     -t|--target)
