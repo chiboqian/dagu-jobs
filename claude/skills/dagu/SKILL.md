@@ -13,6 +13,9 @@ commented `# [Replaced by Dagu]`. The repo's old copy of production's crontab, `
 deleted on 2026-11-03. The server is the source of truth.
 
 - **Server:** `http://jobs.luna-strategy.com:8080`, API v1. The `/api/v2` paths return the web UI's HTML.
+  Since 2026-11-21 the name points at dagu-01 (`192.168.1.65`); the old server (`192.168.88.246`,
+  which also serves `backup.luna-strategy.com`) is retired. Workers connect to `jobs.luna-strategy.com:50055`;
+  `GET /api/v1/workers` lists the connected ones.
 - **Key:** `DAGU_API_KEY` in `~/.config/dagu-jobs/api.env` (owner-only). It has full access. Never
   print it, pass it on a command line, or write it to a file; `dagu_jobs.py` reads it itself.
 - **Time zone:** schedules are New York time.
@@ -21,20 +24,23 @@ deleted on 2026-11-03. The server is the source of truth.
 
 | host / user | What runs there |
 |---|---|
-| `llm-01` / `backtest01` | This box: paper books, comparison and paper-review agents, P&L ledger, QQQ-direct job, paper health check, data cache, backups |
-| `n8n-prod-01` / `production` | Production trading: engine and daemon start/stop, `sync_trades_r2`, log uploads, reports, live health check, `sync_alpaca_fees` |
-| `n8n-prod-01` / `ibkr-01` | The IB Gateway user: weekly gateway stop/start/restart, its backups |
+| `llm-01` / `backtest01` | This box: comparison and paper-review agents, the paper books' data captures, `paper_logs_pull` (copies the books' logs from paper-01), P&L ledger, QQQ-direct job, data cache, backups |
+| `paper-01` / `paper` | The paper books (from 2026-11-22): `paper_book_*` start/finish/snapshot, `account_health_paper`, `momentum_paper_*`, backups. Trading's `docs/paper-host.md` |
+| `trading-01` / `production` | Production trading (from 2026-11-21): engine and daemon start/stop, `sync_trades_r2`, log uploads, reports, live health check, `sync_alpaca_fees` |
+| `n8n-prod-01` / `production`, `ibkr-01` | The old production host (retired 2026-11-21): only each user's backups, prune and client update |
+| `trading-01` / `ibkr-01` | Production's live IB Gateway (from 2026-11-21): weekly stop Sat 21:15, start Sun 11:00 |
+| `trading-01` / `ibkr-paper-01` | The paper IB Gateway (from 2026-11-21): weekly restart Sun 10:00, manual `start_paper_gateway` / `stop_paper_gateway` |
 
 **Labels:** every job must have `host` and `user` labels equal to its `worker_selector`'s host and
 user. Other labels are optional:
 
 ```yaml
 labels:
-  host: "n8n-prod-01"        # required, = worker_selector.host
+  host: "trading-01"         # required, = worker_selector.host
   user: "production"         # required, = worker_selector.user
   type: "backup"             # optional; any further labels are fine
 worker_selector:
-  host: "n8n-prod-01"
+  host: "trading-01"
   user: "production"
 ```
 
@@ -50,7 +56,7 @@ project uses the same copy. Run it from any directory with that repo's venv:
 
 ```bash
 DJ="$HOME/dagu-jobs/.venv/bin/python $HOME/dagu-jobs/dagu_jobs.py"
-$DJ list [--host n8n-prod-01] [--user production]
+$DJ list [--host trading-01] [--user production]
 $DJ show JOB                 # spec, account numbers masked
 $DJ runs JOB [-n 10]
 $DJ log JOB [--run RUN_ID]   # latest run by default
@@ -71,7 +77,7 @@ $DJ put JOB FILE [--create] [--yes]
    live spec, warns about a missing or wrong `host`/`user` label, and changes nothing. Show the user
    that diff.
 3. **Apply only on the user's OK for that change.**
-   - Production (`n8n-prod-01`) jobs belong to the user: never change them on your own initiative,
+   - Production (`trading-01` / `production`, and the gateway users there) jobs belong to the user: never change them on your own initiative,
      and approval of one change does not cover the next.
    - `put --yes` saves the live spec to `~/dagu-jobs/backups/<job>_<time>.yaml` (git-ignored),
      writes the new one and reads it back.
