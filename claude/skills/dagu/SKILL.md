@@ -110,4 +110,7 @@ evening.
 - **No stdout:** the API does not serve a step's stdout. `log` prints its path on the worker,
   `/var/lib/dagu/logs/...`. Ask the user for it if the error isn't enough.
 - **Health checks:** Trading's `util/account_health.py` exits 1 when any check is DOWN. Its email (and
-  `trading_logs/health/<name>.log` on the host) says which.
+  `trading_logs/health/<name>.log` on the host) says which. Each check runs only inside its hours, so
+  `prod-health-check` and `account_health_paper` skip everything on weekends. To check production now,
+  start the manual-only `prod_health_check_now` (no hours, `--no-email`; result lines in `log`) with
+  `POST /api/v1/dags/prod_health_check_now/start`, on the user's request. Paper: run the same on paper-01.
