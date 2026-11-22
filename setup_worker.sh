@@ -195,12 +195,37 @@ Environment="PATH=${BIN_DIR}:${HOME}/.local/bin:${HOME}/bin:/usr/local/bin:/usr/
 WantedBy=default.target
 EOF
 
-systemctl --user daemon-reload
-systemctl --user enable "$SERVICE_NAME"
-systemctl --user restart "$SERVICE_NAME"
+# Pre-create the enable symlink so the service starts automatically as soon as
+# the user's systemd manager (user@<uid>.service) starts.
+mkdir -p "${SYSTEMD_USER_DIR}/default.target.wants"
+ln -sfn "$SERVICE_FILE" "${SYSTEMD_USER_DIR}/default.target.wants/${SERVICE_NAME}"
 
-# Attempt to enable linger so the user service stays running after logout
-loginctl enable-linger "$(whoami)" 2>/dev/null || true
+# Attempt to enable linger first so the user systemd instance starts and stays
+# running after logout.
+loginctl enable-linger "$CURRENT_USER" 2>/dev/null || true
+
+# Populate XDG_RUNTIME_DIR and DBUS_SESSION_BUS_ADDRESS when running inside a
+# subshell created via `su -` or `sudo -iu` where PAM did not export them.
+USER_UID="$(id -u)"
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/${USER_UID}}"
+if [[ -z "${DBUS_SESSION_BUS_ADDRESS:-}" && -S "${XDG_RUNTIME_DIR}/bus" ]]; then
+  export DBUS_SESSION_BUS_ADDRESS="unix:path=${XDG_RUNTIME_DIR}/bus"
+fi
+
+SYSTEMD_STARTED=false
+if systemctl --user daemon-reload 2>/dev/null; then
+  systemctl --user enable "$SERVICE_NAME"
+  systemctl --user restart "$SERVICE_NAME"
+  SYSTEMD_STARTED=true
+else
+  echo "" >&2
+  echo "WARNING: Could not connect to the user systemd bus (${XDG_RUNTIME_DIR}/bus not found)." >&2
+  echo "This usually happens when you switched to '${CURRENT_USER}' via 'su' or 'sudo' and lingering is not yet enabled." >&2
+  echo "Run the following as a sudo-capable user (or root) to start the user systemd manager and ${SERVICE_NAME}:" >&2
+  echo "" >&2
+  echo "  sudo loginctl enable-linger ${CURRENT_USER}" >&2
+  echo "  sudo systemctl start user@${USER_UID}.service" >&2
+fi
 
 echo ""
 echo "Setup complete!"
@@ -211,4 +236,6 @@ echo "  Updater Script:   ${UPDATE_SCRIPT}"
 echo "  Auto-Update DAG:  ${UPDATE_DAG_FILE} (schedule: ${UPDATE_SCHEDULE})"
 echo "  Systemd Service:  ${SERVICE_FILE}"
 echo ""
-systemctl --user --no-pager status "$SERVICE_NAME" || true
+if [[ "$SYSTEMD_STARTED" == "true" ]]; then
+  systemctl --user --no-pager status "$SERVICE_NAME" || true
+fi

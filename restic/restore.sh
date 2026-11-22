@@ -161,18 +161,30 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     --from)
-      FROM_TARGET="${2%/}"
-      BASE_REPO="${RESTIC_REPOSITORY%/}"
-      BASE_SERVER="${BASE_REPO%/*}"
-      export RESTIC_REPOSITORY="${BASE_SERVER}/${FROM_TARGET}/"
+      if [[ "$2" == rest:* ]]; then
+        export RESTIC_REPOSITORY="$2"
+      elif [[ "$2" == http://* || "$2" == https://* ]]; then
+        export RESTIC_REPOSITORY="rest:$2"
+      else
+        FROM_TARGET="${2%/}"
+        BASE_REPO="${RESTIC_REPOSITORY%/}"
+        BASE_SERVER="${BASE_REPO%/*}"
+        export RESTIC_REPOSITORY="${BASE_SERVER}/${FROM_TARGET}/"
+      fi
       shift 2
       ;;
     --from=*)
       FROM_TARGET="${1#*=}"
-      FROM_TARGET="${FROM_TARGET%/}"
-      BASE_REPO="${RESTIC_REPOSITORY%/}"
-      BASE_SERVER="${BASE_REPO%/*}"
-      export RESTIC_REPOSITORY="${BASE_SERVER}/${FROM_TARGET}/"
+      if [[ "$FROM_TARGET" == rest:* ]]; then
+        export RESTIC_REPOSITORY="$FROM_TARGET"
+      elif [[ "$FROM_TARGET" == http://* || "$FROM_TARGET" == https://* ]]; then
+        export RESTIC_REPOSITORY="rest:${FROM_TARGET}"
+      else
+        FROM_TARGET="${FROM_TARGET%/}"
+        BASE_REPO="${RESTIC_REPOSITORY%/}"
+        BASE_SERVER="${BASE_REPO%/*}"
+        export RESTIC_REPOSITORY="${BASE_SERVER}/${FROM_TARGET}/"
+      fi
       shift
       ;;
     -p|--password-file)

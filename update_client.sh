@@ -112,6 +112,10 @@ if [[ -x "$DAGU_BIN" ]]; then
 
     # Delay the service restart by 5 seconds so if this script is running inside a
     # Dagu job, the step finishes and reports success before the worker restarts.
+    export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+    if [[ -z "${DBUS_SESSION_BUS_ADDRESS:-}" && -S "${XDG_RUNTIME_DIR}/bus" ]]; then
+      export DBUS_SESSION_BUS_ADDRESS="unix:path=${XDG_RUNTIME_DIR}/bus"
+    fi
     if systemctl --user is-active --quiet dagu-worker.service 2>/dev/null; then
       echo "[dagu] Scheduling dagu-worker.service restart in 5 seconds..."
       if ! systemd-run --user --on-active=5s systemctl --user restart dagu-worker.service >/dev/null 2>&1; then
