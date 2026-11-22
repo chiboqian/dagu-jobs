@@ -94,8 +94,9 @@ Production's 16:05 `sync_trades_r2` (fills, orders, bars, and Alpaca fees from p
 the 16:10/16:11 log uploads feed backtest01's evening jobs:
 - `strategy_pnl_d1`: 16:40, retries until 21:00;
 - `compare_today_agent`: 16:45, no wait, so it needs the fills already in R2;
-- `qqqdirect_compare`: 18:00, retries until 21:00, and reads compare_today's output and (from 2026-11-22,
-  for its instrument comparison) the 17:40 paper review's.
+- `qqqdirect_compare`: 18:00, retries until 21:00, and reads compare_today's output;
+- `instrument_compare`: 18:15, retries until 21:30, reads the 17:40 paper review's output,
+  compare_today's and `qqqdirect_compare`'s (from 2026-11-22).
 
 Alpaca posts a day's fees at about 20:05–20:20, so `sync_alpaca_fees` runs at 20:45.
 
