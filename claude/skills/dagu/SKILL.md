@@ -28,8 +28,7 @@ deleted on 2026-11-03. The server is the source of truth.
 | `paper-01` / `paper` | The paper books (from 2026-11-22): `paper_book_*` start/finish/snapshot, `account_health_paper`, `momentum_paper_*`, backups. Trading's `docs/paper-host.md` |
 | `trading-01` / `production` | Production trading (from 2026-11-21): engine and daemon start/stop, `sync_trades_r2`, log uploads, reports, live health check, `sync_alpaca_fees` |
 | `n8n-prod-01` / `production`, `ibkr-01` | The old production host (retired 2026-11-21): only each user's backups, prune and client update |
-| `trading-01` / `ibkr-01` | Production's live IB Gateway (from 2026-11-21): weekly stop Sat 21:15, start Sun 11:00 |
-| `trading-01` / `ibkr-paper-01` | The paper IB Gateway (from 2026-11-21): weekly restart Sun 10:00, manual `start_paper_gateway` / `stop_paper_gateway` |
+| `trading-01` / `ibkr-01` | Both IB Gateways. Live (from 2026-11-21): weekly stop Sat 21:15, start Sun 11:00. Paper (under this user from 2026-11-22): weekly restart Sun 10:00, manual `start_paper_gateway` / `stop_paper_gateway`. They must share one OS user, or IBKR refuses paper market data while live is logged in (error 162); `ibkr-paper-01` was deleted for that |
 
 **Labels:** every job must have `host` and `user` labels equal to its `worker_selector`'s host and
 user. Other labels are optional:
